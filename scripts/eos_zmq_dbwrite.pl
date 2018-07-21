@@ -41,6 +41,10 @@ my $dbh = DBI->connect($dsn, $db_user, $db_password,
                         mysql_server_prepare => 1});
 die($DBI::errstr) unless $dbh;
 
+my $sth_check_seq =
+    $dbh->prepare('SELECT global_action_seq FROM EOSIO_ACTIONS ' .
+                  'WHERE global_action_seq=?');
+    
 my $sth_insaction =
     $dbh->prepare('INSERT INTO EOSIO_ACTIONS ' . 
                   '(global_action_seq, block_num, block_time,' .
@@ -80,6 +84,12 @@ while( zmq_msg_recv($msg, $socket) != -1 )
     $block_time =~ s/T/ /;
 
     my $seq = $action->{'global_action_seq'};
+    $sth_check_seq->execute($seq);
+    my $r = $sth_check_seq->fetchrow_arrayref();
+    if( defined($r) )
+    {
+        next;
+    }
     
     $sth_insaction->execute($seq,
                             $action->{'block_num'},

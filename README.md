@@ -2,7 +2,9 @@
 
 
 ```
-sudo apt-get install cpanminus libzmq5-dev mariadb-server libdbi-perl libdbd-mysql-perl
+sudo apt-get install cpanminus libzmq5-dev mariadb-server \
+libdbi-perl libdbd-mysql-perl libexcel-writer-xlsx-perl
+
 sudo cpanm ZMQ::LibZMQ3
 
 sudo mysql <sql/eos_zmq_dbcreate.sql 

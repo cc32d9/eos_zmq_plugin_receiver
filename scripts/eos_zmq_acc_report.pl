@@ -126,6 +126,9 @@ foreach my $colname (@columns)
     $col++;
 }
 
+my %final_balance;
+my %final_stake;
+my %final_ram;
 
 my $sth = $dbh->prepare
     ('SELECT ' .
@@ -151,6 +154,12 @@ $sth->execute($account, $start_date, $start_date, $months);
 
 while( my $r = $sth->fetchrow_hashref('NAME_lc') )
 {
+    $final_balance{$r->{'issuer'}}{$r->{'currency'}} = $r->{'balance'};
+    $final_stake{'cpu'} = $r->{'cpu_stake'};
+    $final_stake{'net'} = $r->{'net_stake'};
+    $final_ram{'quota'} = $r->{'ram_quota'};
+    $final_ram{'usage'} = $r->{'ram_usage'};
+        
     my $action = $json->decode($r->{'jsdata'});
     my $atrace = $action->{'action_trace'};
 
@@ -241,6 +250,102 @@ while( my $r = $sth->fetchrow_hashref('NAME_lc') )
 }
 
 $dbh->disconnect();
+
+
+$worksheet = $workbook->add_worksheet('final balance');
+
+$col = 0;
+$row = 0;
+
+$worksheet->set_column($col, $col, 20);
+$worksheet->write($row, $col, 'issuer', $f_tblheader);
+$col++;
+
+$worksheet->set_column($col, $col, 40);
+$worksheet->write($row, $col, 'category', $f_tblheader);
+$col++;
+
+$worksheet->set_column($col, $col, 40);
+$worksheet->write($row, $col, 'asset', $f_tblheader);
+$col++;
+
+$worksheet->set_column($col, $col, 20);
+$worksheet->write($row, $col, 'amount', $f_tblheader);
+$col++;
+
+$col = 0;
+$row++;
+$worksheet->write_string($row, $col, 'eosio.token');
+$col++;
+$col++;
+$worksheet->write_string($row, $col, 'EOS');
+$col++;
+$worksheet->write_number($row, $col, $final_balance{'eosio.token'}{'EOS'},  $f_money);
+
+
+$col = 0;
+$row++;
+$worksheet->write_string($row, $col, 'eosio');
+$col++;
+$worksheet->write_string($row, $col, 'cpu_stake');
+$col++;
+$worksheet->write_string($row, $col, 'EOS');
+$col++;
+$worksheet->write_number($row, $col, $final_stake{'cpu'},  $f_money);
+
+
+$col = 0;
+$row++;
+$worksheet->write_string($row, $col, 'eosio');
+$col++;
+$worksheet->write_string($row, $col, 'net_stake');
+$col++;
+$worksheet->write_string($row, $col, 'EOS');
+$col++;
+$worksheet->write_number($row, $col, $final_stake{'net'},  $f_money);
+
+
+$col = 0;
+$row++;
+$worksheet->write_string($row, $col, 'eosio');
+$col++;
+$worksheet->write_string($row, $col, 'ram_quota');
+$col++;
+$worksheet->write_string($row, $col, 'bytes');
+$col++;
+$worksheet->write_number($row, $col, $final_ram{'quota'});
+
+
+$col = 0;
+$row++;
+$worksheet->write_string($row, $col, 'eosio');
+$col++;
+$worksheet->write_string($row, $col, 'ram_usage');
+$col++;
+$worksheet->write_string($row, $col, 'bytes');
+$col++;
+$worksheet->write_number($row, $col, $final_ram{'usage'});
+
+
+$row+=2;
+foreach my $issuer (sort keys %final_balance)
+{
+    next if $issuer eq 'eosio.token';
+    foreach my $currency (sort keys %{$final_balance{$issuer}})
+    {
+        $col = 0;
+        $row++;
+        
+        $worksheet->write_string($row, $col, $issuer);
+        $col++;
+        $col++;
+        $worksheet->write_string($row, $col, $currency);
+        $col++;
+        $worksheet->write_number($row, $col, $final_balance{$issuer}{$currency},  $f_money);
+    }
+}
+
+
 $workbook->close();
 
 

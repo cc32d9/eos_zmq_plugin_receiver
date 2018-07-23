@@ -7,13 +7,11 @@ use Getopt::Long;
 use DBI;
 
 
-$| = 1;
-
 my $connectstr = 'tcp://127.0.0.1:5556';
 my $dsn = 'DBI:mysql:database=eosio;host=localhost';
 my $db_user = 'eosio';
 my $db_password = 'guugh3Ei';
-
+my $commit_every = 120;
 
 my $ok = GetOptions
     ('connect=s' => \$connectstr,
@@ -72,6 +70,7 @@ die($!) if $rv;
 
 
 my $json = JSON->new->pretty->canonical;
+my $n_commit_block = 0;
 
 my $msg = zmq_msg_init();
 while( zmq_msg_recv($msg, $socket) != -1 )
@@ -120,7 +119,11 @@ while( zmq_msg_recv($msg, $socket) != -1 )
                               $amount);
     }
 
-    $dbh->commit();
+    if( $action->{'block_num'} >= $n_commit_block + $commit_every )
+    {
+        $n_commit_block = $action->{'block_num'};
+        $dbh->commit();
+    }
 }
 
 

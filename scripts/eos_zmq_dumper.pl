@@ -8,28 +8,46 @@ use Getopt::Long;
 
 $| = 1;
 
-my $connectstr = 'tcp://127.0.0.1:5556';
+my $ep_pull;
+my $ep_sub;
 
-my $ok = GetOptions ('connect=s' => \$connectstr);
+my $ok = GetOptions
+    ('pull=s' => \$ep_pull,
+     'sub=s'  => \$ep_sub);
 
 
-if( not $ok or scalar(@ARGV) > 0 )
+if( not $ok or scalar(@ARGV) > 0 or
+    (not $ep_pull and not $ep_sub) or
+    ($ep_pull and $ep_sub) )
 {
     print STDERR "Usage: $0 [options...]\n",
-    "The utility connects to EOS ZMQ PUSH socket and \n",
+    "The utility connects to EOS ZMQ PUSH or PUB socket and \n",
     "dumps incoming messages to stdout\n",
     "Options:\n",
-    "  --connect=ENDPOINT \[$connectstr\]\n";
+    "  --pull=ENDPOINT  connect to a PUSH socket\n",
+    "  --sub=ENDPOINT   connect to a PUB socket\n";
     exit 1;
 }
 
 
 
 my $ctxt = zmq_init;
-my $socket = zmq_socket( $ctxt, ZMQ_PULL );
+my $socket;
 
-my $rv = zmq_connect( $socket, $connectstr );
-die($!) if $rv;
+if( defined($ep_pull) )
+{
+    $socket = zmq_socket($ctxt, ZMQ_PULL);
+    my $rv = zmq_connect( $socket, $ep_pull );
+    die($!) if $rv;
+}
+else
+{
+    $socket = zmq_socket($ctxt, ZMQ_SUB);
+    my $rv = zmq_connect( $socket, $ep_sub );
+    die($!) if $rv;
+    $rv = zmq_setsockopt( $socket, ZMQ_SUBSCRIBE, pack('VV', 0, 0) );
+    die($!) if $rv;
+}    
 
 
 my $json = JSON->new->pretty->canonical;

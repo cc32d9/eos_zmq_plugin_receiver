@@ -36,7 +36,9 @@ my $ctxt = zmq_init;
 
 
 my $s_pull = zmq_socket( $ctxt, ZMQ_PULL );
-my $rv = zmq_connect( $s_pull, $ep_pull );
+my $rv = zmq_setsockopt( $s_pull, ZMQ_RCVHWM, 200000 );
+die($!) if $rv;
+$rv = zmq_connect( $s_pull, $ep_pull );
 die($!) if $rv;
 
 my @s_push;

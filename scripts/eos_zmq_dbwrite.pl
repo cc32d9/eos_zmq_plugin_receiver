@@ -39,28 +39,40 @@ my $dbh = DBI->connect($dsn, $db_user, $db_password,
                         mysql_server_prepare => 1});
 die($DBI::errstr) unless $dbh;
 
-my $sth_check_seq =
-    $dbh->prepare('SELECT global_action_seq FROM EOSIO_ACTIONS ' .
-                  'WHERE global_action_seq=?');
+my $sth_check_seq = $dbh->prepare
+    ('SELECT global_action_seq FROM EOSIO_ACTIONS ' .
+     'WHERE global_action_seq=?');
     
-my $sth_insaction =
-    $dbh->prepare('INSERT INTO EOSIO_ACTIONS ' . 
-                  '(global_action_seq, block_num, block_time,' .
-                  'actor_account, recipient_account, action_name,' .
-                  'trx_id, jsdata) ' .
-                  'VALUES(?,?,?,?,?,?,?,?)');
+my $sth_insaction = $dbh->prepare
+    ('INSERT INTO EOSIO_ACTIONS ' . 
+     '(global_action_seq, block_num, block_time,' .
+     'actor_account, recipient_account, action_name, trx_id, jsdata) ' .
+     'VALUES(?,?,?,?,?,?,?,?)');
 
-my $sth_insres =
-    $dbh->prepare('INSERT INTO EOSIO_RESOURCE_BALANCES ' . 
-                  '(global_action_seq, account_name,' .
-                  'cpu_weight, net_weight, ram_quota, ram_usage)' .
-                  'VALUES(?,?,?,?,?,?)');
+my $sth_insres = $dbh->prepare
+    ('INSERT INTO EOSIO_RESOURCE_BALANCES ' . 
+     '(global_action_seq, account_name, cpu_weight, net_weight, ram_quota, ram_usage)' .
+     'VALUES(?,?,?,?,?,?)');
 
-my $sth_inscurr =
-    $dbh->prepare('INSERT INTO EOSIO_CURRENCY_BALANCES ' . 
-                  '(global_action_seq, account_name,' .
-                  'issuer, currency, amount)' .
-                  'VALUES(?,?,?,?,?)');
+my $sth_inslastres = $dbh->prepare
+    ('INSERT INTO EOSIO_LATEST_RESOURCE ' . 
+     '(account_name, global_action_seq, cpu_weight, net_weight, ram_quota, ram_usage)' .
+     'VALUES(?,?,?,?,?,?) ' .
+     'ON DUPLICATE KEY UPDATE global_action_seq=?, cpu_weight=?, ' .
+     'net_weight=?, ram_quota=?, ram_usage=?' );
+
+my $sth_inscurr = $dbh->prepare
+    ('INSERT INTO EOSIO_CURRENCY_BALANCES ' . 
+     '(global_action_seq, account_name, issuer, currency, amount)' .
+     'VALUES(?,?,?,?,?)');
+
+my $sth_inslastcurr = $dbh->prepare
+    ('INSERT INTO EOSIO_LATEST_CURRENCY ' . 
+     '(account_name, global_action_seq, issuer, currency, amount)' .
+     'VALUES(?,?,?,?,?)' .
+     'ON DUPLICATE KEY UPDATE global_action_seq=?, amount=?');
+
+
 
 my $ctxt = zmq_init;
 my $socket = zmq_socket( $ctxt, ZMQ_PULL );
@@ -101,24 +113,53 @@ while( zmq_msg_recv($msg, $socket) != -1 )
 
     foreach my $bal (@{$action->{'resource_balances'}})
     {
+        my $account = $bal->{'account_name'};
+        my $cpu = $bal->{'cpu_weight'}/10000.0;
+        my $net = $bal->{'net_weight'}/10000.0;
+        my $quota = $bal->{'ram_quota'};
+        my $usage = $bal->{'ram_usage'};
+        
         $sth_insres->execute($seq,
-                             $bal->{'account_name'},
-                             $bal->{'cpu_weight'}/10000.0,
-                             $bal->{'net_weight'}/10000.0,
-                             $bal->{'ram_quota'},
-                             $bal->{'ram_usage'});
+                             $account,
+                             $cpu,
+                             $net,
+                             $quota,
+                             $usage);
+
+        $sth_inslastres->execute($account,
+                                 $seq,
+                                 $cpu,
+                                 $net,
+                                 $quota,
+                                 $usage,
+                                 $seq,
+                                 $cpu,
+                                 $net,
+                                 $quota,
+                                 $usage);
     }
 
     foreach my $bal (@{$action->{'currency_balances'}})
     {
+        my $account = $bal->{'account_name'};
+        my $issuer = $bal->{'issuer'};
         my ($amount, $currency) = split(/\s+/, $bal->{'balance'});
+        
         $sth_inscurr->execute($seq,
-                              $bal->{'account_name'},
-                              $bal->{'issuer'},
+                              $account,
+                              $issuer,
                               $currency,
                               $amount);
+        
+        $sth_inslastcurr->execute($account,
+                                  $seq,
+                                  $issuer,
+                                  $currency,
+                                  $amount,
+                                  $seq,
+                                  $amount);
     }
-
+    
     if( $action->{'block_num'} >= $n_commit_block + $commit_every )
     {
         $n_commit_block = $action->{'block_num'};

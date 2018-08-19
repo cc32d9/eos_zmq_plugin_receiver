@@ -11,7 +11,7 @@ my $connectstr = 'tcp://127.0.0.1:5556';
 my $dsn = 'DBI:mysql:database=eosio;host=localhost';
 my $db_user = 'eosio';
 my $db_password = 'guugh3Ei';
-my $commit_every = 120;
+my $commit_every = 60;
 
 my $ok = GetOptions
     ('connect=s' => \$connectstr,
@@ -51,15 +51,21 @@ my $sth_insaction = $dbh->prepare
 
 my $sth_insres = $dbh->prepare
     ('INSERT INTO EOSIO_RESOURCE_BALANCES ' . 
-     '(global_action_seq, account_name, cpu_weight, net_weight, ram_quota, ram_usage)' .
-     'VALUES(?,?,?,?,?,?)');
+     '(global_action_seq, account_name, ' .
+     'cpu_weight, cpu_used, cpu_available, cpu_max, ' .
+     'net_weight, net_used, net_available, net_max, ram_quota, ram_usage)' .
+     'VALUES(?,?,?,?,?,?,?,?,?,?,?,?)');
 
 my $sth_inslastres = $dbh->prepare
     ('INSERT INTO EOSIO_LATEST_RESOURCE ' . 
-     '(account_name, global_action_seq, cpu_weight, net_weight, ram_quota, ram_usage)' .
-     'VALUES(?,?,?,?,?,?) ' .
-     'ON DUPLICATE KEY UPDATE global_action_seq=?, cpu_weight=?, ' .
-     'net_weight=?, ram_quota=?, ram_usage=?' );
+     '(account_name, global_action_seq, ' .
+     'cpu_weight, cpu_used, cpu_available, cpu_max, ' .
+     'net_weight, net_used, net_available, net_max, ram_quota, ram_usage)' .
+     'VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ' .
+     'ON DUPLICATE KEY UPDATE global_action_seq=?, ' .
+     'cpu_weight=?, cpu_used=?, cpu_available=?, cpu_max=?, ' .
+     'net_weight=?, net_used=?, net_available=?, net_max=?, ' .
+     'ram_quota=?, ram_usage=?' );
 
 my $sth_inscurr = $dbh->prepare
     ('INSERT INTO EOSIO_CURRENCY_BALANCES ' . 
@@ -114,27 +120,36 @@ while( zmq_msg_recv($msg, $socket) != -1 )
     foreach my $bal (@{$action->{'resource_balances'}})
     {
         my $account = $bal->{'account_name'};
-        my $cpu = $bal->{'cpu_weight'}/10000.0;
-        my $net = $bal->{'net_weight'}/10000.0;
+        
+        my $cpuw = $bal->{'cpu_weight'}/10000.0;
+        my $cpulu = $bal->{'cpu_limit'}{'used'};
+        my $cpula = $bal->{'cpu_limit'}{'available'};
+        my $cpulm = $bal->{'cpu_limit'}{'max'};
+        
+        my $netw = $bal->{'net_weight'}/10000.0;
+        my $netlu = $bal->{'net_limit'}{'used'};
+        my $netla = $bal->{'net_limit'}{'available'};
+        my $netlm = $bal->{'net_limit'}{'max'};
+        
         my $quota = $bal->{'ram_quota'};
         my $usage = $bal->{'ram_usage'};
         
         $sth_insres->execute($seq,
                              $account,
-                             $cpu,
-                             $net,
+                             $cpuw, $cpulu, $cpula, $cpulm,
+                             $netw, $netlu, $netla, $netlm,
                              $quota,
                              $usage);
 
         $sth_inslastres->execute($account,
                                  $seq,
-                                 $cpu,
-                                 $net,
+                                 $cpuw, $cpulu, $cpula, $cpulm,
+                                 $netw, $netlu, $netla, $netlm,
                                  $quota,
                                  $usage,
                                  $seq,
-                                 $cpu,
-                                 $net,
+                                 $cpuw, $cpulu, $cpula, $cpulm,
+                                 $netw, $netlu, $netla, $netlm,
                                  $quota,
                                  $usage);
     }

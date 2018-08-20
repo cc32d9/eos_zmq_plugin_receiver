@@ -9,12 +9,13 @@ use Getopt::Long;
 my $ep_pull;
 my @ep_push;
 my @ep_pub;
-
+my $rcvbuf = 5000;
 
 my $ok = GetOptions
     ('pull=s'    => \$ep_pull,
      'push=s'    => \@ep_push,
-     'pub=s'     => \@ep_pub);
+     'pub=s'     => \@ep_pub,
+     'buf=i'     => \$rcvbuf);
 
 if( not $ok or scalar(@ARGV) > 0 or not $ep_pull or
     scalar(@ep_push)+scalar(@ep_pub) == 0 )
@@ -36,7 +37,7 @@ my $ctxt = zmq_init;
 
 
 my $s_pull = zmq_socket( $ctxt, ZMQ_PULL );
-my $rv = zmq_setsockopt( $s_pull, ZMQ_RCVHWM, 200000 );
+my $rv = zmq_setsockopt( $s_pull, ZMQ_RCVHWM, $rcvbuf );
 die($!) if $rv;
 $rv = zmq_connect( $s_pull, $ep_pull );
 die($!) if $rv;

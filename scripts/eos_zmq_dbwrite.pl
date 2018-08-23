@@ -121,6 +121,8 @@ while( zmq_msg_recv($msg, $socket) != -1 )
             }
         }
     }
+
+    next if $skip;
     
     my $block_time =  $action->{'block_time'};
     $block_time =~ s/T/ /;

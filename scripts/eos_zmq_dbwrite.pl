@@ -39,10 +39,13 @@ my $dbh = DBI->connect($dsn, $db_user, $db_password,
                         mysql_server_prepare => 1});
 die($DBI::errstr) unless $dbh;
 
-my $sth_check_seq = $dbh->prepare
+my $sth_check_tx = $dbh->prepare
     ('SELECT global_action_seq FROM EOSIO_ACTIONS ' .
-     'WHERE global_action_seq=?');
-    
+     'WHERE trx_id=?');
+
+my $sth_del_act = $dbh->prepare
+    ('DELETE FROM EOSIO_ACTIONS WHERE global_action_seq=?');
+
 my $sth_insaction = $dbh->prepare
     ('INSERT INTO EOSIO_ACTIONS ' . 
      '(global_action_seq, block_num, block_time,' .
@@ -97,16 +100,31 @@ while( zmq_msg_recv($msg, $socket) != -1 )
     my ($msgtype, $opts, $js) = unpack('VVa*', $data);
     my $action = $json->decode($js);
 
+    my $tx = $action->{'action_trace'}{'trx_id'};
+    my $seq = $action->{'global_action_seq'};
+    my $skip;
+    
+    $sth_check_tx->execute($tx);
+    my $r = $sth_check_tx->fetchall_arrayref();
+    if( scalar(@{$r}) > 0 )
+    {
+        foreach my $row (@{$r})
+        {
+            my $dbseq = $row->[0];
+            if( $dbseq == $seq )
+            {
+                $skip = 1;
+            }
+            else
+            {
+                $sth_del_act->execute($dbseq);
+            }
+        }
+    }
+    
     my $block_time =  $action->{'block_time'};
     $block_time =~ s/T/ /;
 
-    my $seq = $action->{'global_action_seq'};
-    $sth_check_seq->execute($seq);
-    my $r = $sth_check_seq->fetchrow_arrayref();
-    if( defined($r) )
-    {
-        next;
-    }
     
     $sth_insaction->execute($seq,
                             $action->{'block_num'},

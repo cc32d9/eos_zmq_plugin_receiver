@@ -11,13 +11,18 @@ my $connectstr = 'tcp://127.0.0.1:5556';
 my $dsn = 'DBI:mysql:database=eosio;host=localhost';
 my $db_user = 'eosio';
 my $db_password = 'guugh3Ei';
-my $commit_every = 60;
+my $commit_every = 10;
+
+my %blacklist = ('blocktwitter' => 1);
+my @blacklist_acc;
+
 
 my $ok = GetOptions
     ('connect=s' => \$connectstr,
      'dsn=s'     => \$dsn,
      'dbuser=s'  => \$db_user,
-     'dbpw=s'    => \$db_password);
+     'dbpw=s'    => \$db_password,
+     'bl=s'      => \@blacklist_acc);
 
 
 if( not $ok or scalar(@ARGV) > 0 )
@@ -29,10 +34,16 @@ if( not $ok or scalar(@ARGV) > 0 )
     "  --connect=ENDPOINT \[$connectstr\]\n",
     "  --dsn=DSN          \[$dsn\]\n",
     "  --dbuser=USER      \[$db_user\]\n",
-    "  --dbpw=PASSWORD    \[$db_password\]\n" ;
+    "  --dbpw=PASSWORD    \[$db_password\]\n",
+    "  --bl=ACCOUNT       blacklist oone or more accounts\n";
     exit 1;
 }
 
+foreach my $bl ( @blacklist_acc )
+{
+    $blacklist{$bl} = 1;
+}
+        
 
 my $dbh = DBI->connect($dsn, $db_user, $db_password,
                        {'RaiseError' => 1, AutoCommit => 0,
@@ -100,6 +111,15 @@ while( zmq_msg_recv($msg, $socket) != -1 )
     my ($msgtype, $opts, $js) = unpack('VVa*', $data);
     my $action = $json->decode($js);
 
+    if( $action->{'block_num'} >= $n_commit_block + $commit_every )
+    {
+        $n_commit_block = $action->{'block_num'};
+        $dbh->commit();
+    }
+
+    my $actor = $action->{'action_trace'}{'act'}{'account'};
+    next if $blacklist{$actor};
+
     my $tx = $action->{'action_trace'}{'trx_id'};
     my $seq = $action->{'global_action_seq'};
     my $skip;
@@ -131,7 +151,7 @@ while( zmq_msg_recv($msg, $socket) != -1 )
     $sth_insaction->execute($seq,
                             $action->{'block_num'},
                             $block_time,
-                            $action->{'action_trace'}{'act'}{'account'},
+                            $actor,
                             $action->{'action_trace'}{'receipt'}{'receiver'},
                             $action->{'action_trace'}{'act'}{'name'},
                             $action->{'action_trace'}{'trx_id'},
@@ -193,12 +213,6 @@ while( zmq_msg_recv($msg, $socket) != -1 )
                                   $amount,
                                   $seq,
                                   $amount);
-    }
-    
-    if( $action->{'block_num'} >= $n_commit_block + $commit_every )
-    {
-        $n_commit_block = $action->{'block_num'};
-        $dbh->commit();
     }
 }
 

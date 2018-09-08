@@ -51,8 +51,8 @@ my $dbh = DBI->connect($dsn, $db_user, $db_password,
 die($DBI::errstr) unless $dbh;
 
 my $sth_check_tx = $dbh->prepare
-    ('SELECT global_action_seq FROM EOSIO_ACTIONS ' .
-     'WHERE trx_id=?');
+    ('SELECT global_action_seq, trx_id FROM EOSIO_ACTIONS ' .
+     'WHERE global_action_seq=? OR trx_id=?');
 
 my $sth_del_act = $dbh->prepare
     ('DELETE FROM EOSIO_ACTIONS WHERE global_action_seq=?');
@@ -124,14 +124,15 @@ while( zmq_msg_recv($msg, $socket) != -1 )
     my $seq = $action->{'global_action_seq'};
     my $skip;
     
-    $sth_check_tx->execute($tx);
+    $sth_check_tx->execute($seq, $tx);
     my $r = $sth_check_tx->fetchall_arrayref();
     if( scalar(@{$r}) > 0 )
     {
         foreach my $row (@{$r})
         {
             my $dbseq = $row->[0];
-            if( $dbseq == $seq )
+            my $dbtx = $row->[1];
+            if( $dbseq == $seq and $dbtx eq $tx )
             {
                 $skip = 1;
             }

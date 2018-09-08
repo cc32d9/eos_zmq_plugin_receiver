@@ -2,6 +2,7 @@ CREATE DATABASE eosio;
 
 CREATE USER 'eosio'@'localhost' IDENTIFIED BY 'guugh3Ei';
 GRANT ALL ON eosio.* TO 'eosio'@'localhost';
+grant SELECT on eosio.* to 'eosioro'@'%' identified by 'eosioro';
 
 use eosio;
 

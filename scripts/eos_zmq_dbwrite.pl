@@ -11,7 +11,7 @@ my $connectstr = 'tcp://127.0.0.1:5556';
 my $dsn = 'DBI:mysql:database=eosio;host=localhost';
 my $db_user = 'eosio';
 my $db_password = 'guugh3Ei';
-my $commit_every = 10;
+my $commit_every = 100;
 
 my %blacklist = ('blocktwitter' => 1);
 my @blacklist_acc;
@@ -111,7 +111,7 @@ die($!) if $rv;
 
 
 my $json = JSON->new->pretty->canonical;
-my $n_commit_block = 0;
+my $uncommitted_actions = 0;
 
 my $msg = zmq_msg_init();
 while( zmq_msg_recv($msg, $socket) != -1 )
@@ -119,13 +119,7 @@ while( zmq_msg_recv($msg, $socket) != -1 )
     my $data = zmq_msg_data($msg);
     my ($msgtype, $opts, $js) = unpack('VVa*', $data);
     my $action = $json->decode($js);
-
-    if( $action->{'block_num'} >= $n_commit_block + $commit_every )
-    {
-        $n_commit_block = $action->{'block_num'};
-        $dbh->commit();
-    }
-
+    
     my $actor = $action->{'action_trace'}{'act'}{'account'};
     next if $blacklist{$actor};
 
@@ -255,6 +249,13 @@ while( zmq_msg_recv($msg, $socket) != -1 )
     }    
     
     $sth_upd_irreversible->execute($action->{'last_irreversible_block'});
+
+    $uncommitted_actions++;
+    if( $uncommitted_actions >= $commit_every )
+    {
+        $dbh->commit();
+        $uncommitted_actions = 0;
+    }
 }
 
 

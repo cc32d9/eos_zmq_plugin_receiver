@@ -6,6 +6,15 @@ grant SELECT on eosio.* to 'eosioro'@'%' identified by 'eosioro';
 
 use eosio;
 
+CREATE TABLE EOSIO_VARS
+ (
+ varname VARCHAR(32) PRIMARY KEY,
+ val_int BIGINT NULL,
+ val_str VARCHAR(64) NULL
+ ) ENGINE=InnoDB;
+
+INSERT INTO EOSIO_VARS (varname, val_int) VALUES('last_irreversible_block', 0);
+
 CREATE TABLE EOSIO_ACTIONS
  (
  global_action_seq BIGINT PRIMARY KEY,
@@ -99,3 +108,29 @@ CREATE UNIQUE INDEX EOSIO_LATEST_CURRENCY_I01 ON EOSIO_LATEST_CURRENCY (account_
 CREATE INDEX EOSIO_LATEST_CURRENCY_I02 ON EOSIO_LATEST_CURRENCY (issuer, currency, amount);
 
 
+
+/* transfers may be inline actions, so global_seq may have values
+   not found in EOSIO_ACTIONS table */
+
+CREATE TABLE EOSIO_TRANSFERS
+(
+ global_seq BIGINT PRIMARY KEY,
+ block_num BIGINT NOT NULL,
+ block_time DATETIME NOT NULL,
+ trx_id VARCHAR(64) NOT NULL,
+ issuer VARCHAR(13) NOT NULL,
+ currency VARCHAR(8) NOT NULL,
+ amount DOUBLE PRECISION NOT NULL,
+ tx_from VARCHAR(13) NULL,
+ tx_to VARCHAR(13) NOT NULL,
+ memo TEXT,
+ bal_from DOUBLE PRECISION NULL,
+ bal_to DOUBLE PRECISION NOT NULL
+)  ENGINE=InnoDB;
+
+
+CREATE INDEX EOSIO_TRANSFERS_I01 ON EOSIO_TRANSFERS (block_num);
+CREATE INDEX EOSIO_TRANSFERS_I02 ON EOSIO_TRANSFERS (block_time);
+CREATE INDEX EOSIO_TRANSFERS_I03 ON EOSIO_TRANSFERS (trx_id(8));
+CREATE INDEX EOSIO_TRANSFERS_I04 ON EOSIO_TRANSFERS (tx_from, tx_to, issuer, currency, block_num);
+CREATE INDEX EOSIO_TRANSFERS_I05 ON EOSIO_TRANSFERS (tx_to, tx_from, issuer, currency, block_num);

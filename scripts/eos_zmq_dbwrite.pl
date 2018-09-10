@@ -92,6 +92,8 @@ my $sth_inslastcurr = $dbh->prepare
      'VALUES(?,?,?,?,?)' .
      'ON DUPLICATE KEY UPDATE global_action_seq=?, amount=?');
 
+my $sth_upd_irreversible = $dbh->prepare
+    ('UPDATE EOSIO_VARS SET val_int=? where varname=\'last_irreversible_block\'');
 
 
 my $ctxt = zmq_init;
@@ -215,6 +217,8 @@ while( zmq_msg_recv($msg, $socket) != -1 )
                                   $seq,
                                   $amount);
     }
+
+    $sth_upd_irreversible->execute($action->{'last_irreversible_block'});
 }
 
 

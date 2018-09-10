@@ -158,16 +158,24 @@ while( zmq_msg_recv($msg, $socket) != -1 )
         ('SELECT master_global_seq FROM EOSIO_INLINE_ACTION_SEQ ' .
          'WHERE global_seq IN(' . join(',', keys %{$seqs}) . ')');
 
+    my $found;
     foreach my $row (@{$r})
     {
         my $dbseq = $row->[0];
-        if( $dbseq != $seq )
+        if( $dbseq == $seq )
+        {
+            $found = 1;
+        }
+        else
         {
             $sth_del_act->execute($dbseq);
         }
     }
 
-    $sth_del_inline_seq->execute($seq);
+    if( $found )
+    {
+        $sth_del_inline_seq->execute($seq);
+    }
     
     if( not $skip )
     {

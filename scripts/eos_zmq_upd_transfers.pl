@@ -208,8 +208,9 @@ sub process_action
         my $act = $atrace->{'act'};
         my $data = $act->{'data'};
         my $aname = $act->{'name'};
-        
-        if( $aname eq 'transfer' or $aname eq 'issue' )
+
+        if( ref($data) eq 'HASH' and
+            ($aname eq 'transfer' or $aname eq 'issue') )
         {
             if( defined($data->{'quantity'}) and defined($data->{'to'}) )
             {          

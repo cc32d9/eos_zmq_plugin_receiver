@@ -206,25 +206,29 @@ sub process_action
     {
         $state->{'seqs'}{$gseq} = 1;
         my $act = $atrace->{'act'};
-        my $data = $act->{'data'};
-        my $aname = $act->{'name'};
-
-        if( ref($data) eq 'HASH' and
-            ($aname eq 'transfer' or $aname eq 'issue') )
+        
+        if( $atrace->{'receipt'}{'receiver'} eq $act->{'account'} )
         {
-            if( defined($data->{'quantity'}) and defined($data->{'to'}) )
-            {          
-                my ($amount, $currency) = split(/\s+/, $data->{'quantity'});
-                
-                push(@{$state->{'transfers'}}, {
-                    'global_seq' => $gseq,
-                    'issuer' => $act->{'account'},
-                    'currency' => $currency,
-                    'amount' => $amount,
-                    'tx_from' => $data->{'from'},
-                    'tx_to' => $data->{'to'},
-                    'memo' => $data->{'memo'},
-                     });            
+            my $aname = $act->{'name'};
+            my $data = $act->{'data'};
+            
+            if( ref($data) eq 'HASH' and
+                ($aname eq 'transfer' or $aname eq 'issue') )
+            {
+                if( defined($data->{'quantity'}) and defined($data->{'to'}) )
+                {          
+                    my ($amount, $currency) = split(/\s+/, $data->{'quantity'});
+                    
+                    push(@{$state->{'transfers'}}, {
+                        'global_seq' => $gseq,
+                        'issuer' => $act->{'account'},
+                        'currency' => $currency,
+                        'amount' => $amount,
+                        'tx_from' => $data->{'from'},
+                        'tx_to' => $data->{'to'},
+                        'memo' => $data->{'memo'},
+                         });            
+                }
             }
         }
     }

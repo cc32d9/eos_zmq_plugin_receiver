@@ -33,7 +33,20 @@ CREATE INDEX EOSIO_ACTIONS_I03 ON EOSIO_ACTIONS (actor_account, action_name, blo
 CREATE INDEX EOSIO_ACTIONS_I04 ON EOSIO_ACTIONS (recipient_account, action_name, block_num);
 CREATE INDEX EOSIO_ACTIONS_I05 ON EOSIO_ACTIONS (trx_id(8));
 CREATE INDEX EOSIO_ACTIONS_I06 ON EOSIO_ACTIONS (action_name, block_num);
- 
+
+
+CREATE TABLE EOSIO_INLINE_ACTION_SEQ
+ (
+ global_seq BIGINT PRIMARY KEY,
+ master_global_seq BIGINT NOT NULL,
+ FOREIGN KEY (master_global_seq)
+   REFERENCES EOSIO_ACTIONS(global_action_seq)
+   ON DELETE CASCADE
+ ) ENGINE=InnoDB;
+
+
+
+
 CREATE TABLE EOSIO_RESOURCE_BALANCES
  (
  global_action_seq BIGINT NOT NULL,

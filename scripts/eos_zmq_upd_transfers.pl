@@ -194,6 +194,7 @@ while(1)
 
 $dbh->disconnect();
 
+print("Finished\n");
 
 
 sub process_action

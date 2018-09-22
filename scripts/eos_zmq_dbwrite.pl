@@ -50,25 +50,11 @@ my $dbh = DBI->connect($dsn, $db_user, $db_password,
                         mysql_server_prepare => 1});
 die($DBI::errstr) unless $dbh;
 
-my $sth_check_tx = $dbh->prepare
-    ('SELECT global_action_seq, trx_id FROM EOSIO_ACTIONS ' .
-     'WHERE global_action_seq=? OR trx_id=?');
-
-my $sth_del_act = $dbh->prepare
-    ('DELETE FROM EOSIO_ACTIONS WHERE global_action_seq=?');
-
 my $sth_insaction = $dbh->prepare
     ('INSERT INTO EOSIO_ACTIONS ' . 
      '(global_action_seq, block_num, block_time,' .
      'actor_account, recipient_account, action_name, trx_id, jsdata) ' .
      'VALUES(?,?,?,?,?,?,?,?)');
-
-my $sth_del_inline_seq = $dbh->prepare
-    ('DELETE FROM EOSIO_INLINE_ACTION_SEQ WHERE master_global_seq=?'); 
-
-my $sth_ins_inline_seq = $dbh->prepare
-    ('INSERT INTO EOSIO_INLINE_ACTION_SEQ ' . 
-     '(global_seq, master_global_seq) VALUES(?,?)');
 
 my $sth_insres = $dbh->prepare
     ('INSERT INTO EOSIO_RESOURCE_BALANCES ' . 
@@ -99,7 +85,7 @@ my $sth_inslastcurr = $dbh->prepare
      'VALUES(?,?,?,?,?) ' .
      'ON DUPLICATE KEY UPDATE global_action_seq=?, amount=?');
 
-my $sth_upd_irreversible = $dbh->prepare
+my $sth_upd_last_irreversible = $dbh->prepare
     ('UPDATE EOSIO_VARS SET val_int=? where varname=\'last_irreversible_block\'');
 
 
@@ -111,78 +97,26 @@ die($!) if $rv;
 
 
 my $json = JSON->new->pretty->canonical;
-my $uncommitted_actions = 0;
+my $uncommitted = 0;
 
 my $msg = zmq_msg_init();
 while( zmq_msg_recv($msg, $socket) != -1 )
 {
     my $data = zmq_msg_data($msg);
     my ($msgtype, $opts, $js) = unpack('VVa*', $data);
-    my $action = $json->decode($js);
-    
-    my $actor = $action->{'action_trace'}{'act'}{'account'};
-    next if $blacklist{$actor};
-
-    my $tx = $action->{'action_trace'}{'trx_id'};
-    my $seq = $action->{'global_action_seq'};
-
-    my $seqs = {};
-    collect_seqs($action->{'action_trace'}, $seqs);
-        
-    my $skip;
-    
-    $sth_check_tx->execute($seq, $tx);
-    my $r = $sth_check_tx->fetchall_arrayref();
-    if( scalar(@{$r}) > 0 )
+    if( $msgtype == 0 )  # action and balances
     {
-        foreach my $row (@{$r})
-        {
-            my $dbseq = $row->[0];
-            my $dbtx = $row->[1];
-            if( $dbseq == $seq and $dbtx eq $tx )
-            {
-                $skip = 1;
-            }
-            else
-            {
-                $sth_del_act->execute($dbseq);
-            }
-        }
-    }
-
-    # a transaction from reversible block may never end up in
-    # irreversible blocks, so we erase all transactions that conflict
-    # with our sequence numbers
+        my $action = $json->decode($js);
     
-    $r = $dbh->selectall_arrayref
-        ('SELECT master_global_seq FROM EOSIO_INLINE_ACTION_SEQ ' .
-         'WHERE global_seq IN(' . join(',', keys %{$seqs}) . ')');
+        my $actor = $action->{'action_trace'}{'act'}{'account'};
+        next if $blacklist{$actor};
 
-    my $found;
-    foreach my $row (@{$r})
-    {
-        my $dbseq = $row->[0];
-        if( $dbseq == $seq )
-        {
-            $found = 1;
-        }
-        else
-        {
-            $sth_del_act->execute($dbseq);
-        }
-    }
+        my $tx = $action->{'action_trace'}{'trx_id'};
+        my $seq = $action->{'global_action_seq'};
 
-    if( $found )
-    {
-        $sth_del_inline_seq->execute($seq);
-    }
-    
-    if( not $skip )
-    {
         my $block_time =  $action->{'block_time'};
         $block_time =~ s/T/ /;
 
-        
         $sth_insaction->execute($seq,
                                 $action->{'block_num'},
                                 $block_time,
@@ -215,7 +149,7 @@ while( zmq_msg_recv($msg, $socket) != -1 )
                                  $netw, $netlu, $netla, $netlm,
                                  $quota,
                                  $usage);
-
+            
             $sth_inslastres->execute($account,
                                      $seq,
                                      $cpuw, $cpulu, $cpula, $cpulm,
@@ -228,7 +162,7 @@ while( zmq_msg_recv($msg, $socket) != -1 )
                                      $quota,
                                      $usage);
         }
-
+        
         foreach my $bal (@{$action->{'currency_balances'}})
         {
             my $account = $bal->{'account_name'};
@@ -249,20 +183,26 @@ while( zmq_msg_recv($msg, $socket) != -1 )
                                       $seq,
                                       $amount);
         }
+       
+        $sth_upd_last_irreversible->execute($action->{'last_irreversible_block'});
+    }
+    elsif( $msgtype == 1 )  # irreversible block
+    {
+        my $data = $json->decode($js);
+        if( scalar(@{$data->{'transactions'}}) > 0 )
+        {
+            $dbh->do('UPDATE EOSIO_ACTIONS SET irreversible=1 ' .
+                     'WHERE trx_id IN (' .
+                     join(',', map {'\'' . $_ . '\''} sort @{$data->{'transactions'}}) .
+                     ')');
+        }
     }
 
-    foreach my $iseq (keys %{$seqs})
-    {
-        $sth_ins_inline_seq->execute($iseq, $seq);
-    }    
-    
-    $sth_upd_irreversible->execute($action->{'last_irreversible_block'});
-
-    $uncommitted_actions++;
-    if( $uncommitted_actions >= $commit_every )
+    $uncommitted++;
+    if( $uncommitted >= $commit_every )
     {
         $dbh->commit();
-        $uncommitted_actions = 0;
+        $uncommitted = 0;
     }
 }
 
@@ -271,19 +211,4 @@ print STDERR "The stream ended\n";
 $dbh->disconnect();
 
 
-sub collect_seqs
-{
-    my $atrace = shift;
-    my $seqs = shift;
-
-    $seqs->{$atrace->{'receipt'}{'global_sequence'}} = 1;
-
-    if( defined($atrace->{'inline_traces'}) )
-    {
-        foreach my $trace (@{$atrace->{'inline_traces'}})
-        {
-            collect_seqs($trace, $seqs);
-        }
-    }
-}
 

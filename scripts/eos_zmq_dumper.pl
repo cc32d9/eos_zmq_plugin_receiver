@@ -45,7 +45,7 @@ else
     $socket = zmq_socket($ctxt, ZMQ_SUB);
     my $rv = zmq_connect( $socket, $ep_sub );
     die($!) if $rv;
-    $rv = zmq_setsockopt( $socket, ZMQ_SUBSCRIBE, pack('VV', 0, 0) );
+    $rv = zmq_setsockopt( $socket, ZMQ_SUBSCRIBE, '' );
     die($!) if $rv;
 }    
 

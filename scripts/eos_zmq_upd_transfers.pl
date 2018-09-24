@@ -59,16 +59,10 @@ my $sth_getirreversible = $dbh->prepare
 my $sth_getactions = $dbh->prepare
     ('SELECT ' .
      ' DATE(block_time) AS bd, block_num, block_time, trx_id, ' .
-     ' EOSIO_ACTIONS.global_action_seq AS seq, jsdata ' .
+     ' global_action_seq as seq, jsdata ' .
      'FROM EOSIO_ACTIONS ' .
-     'WHERE global_action_seq > ? AND block_num <= ? ' .
+     'WHERE global_action_seq > ? AND block_num <= ? AND irreversible=1 ' .
      'ORDER BY global_action_seq LIMIT 1000');
-
-my $sth_getbalance = $dbh->prepare
-    ('SELECT ' .
-     'account_name, issuer, currency, amount ' .
-     'FROM EOSIO_CURRENCY_BALANCES ' .
-     'WHERE global_action_seq=?');
 
 my $sth_check_tx = $dbh->prepare
     ('SELECT trx_id FROM EOSIO_TRANSFERS WHERE global_seq=?');
@@ -102,7 +96,7 @@ while(1)
     {
         my $tx = $row->{'trx_id'};
         $seq = $row->{'seq'};
-        
+                
         my $action = eval { $json->decode($row->{'jsdata'}) };
         if($@)
         {
@@ -125,12 +119,11 @@ while(1)
         
         next if scalar(@{$state->{'transfers'}}) == 0;
         
-        $sth_getbalance->execute($seq);
-        my $balances = $sth_getbalance->fetchall_arrayref({});
         my %bal;
-        foreach my $brow (@{$balances})
+        foreach my $brow (@{$action->{'currency_balances'}})
         {
-            $bal{$brow->{'account_name'}}{$brow->{'issuer'}}{$brow->{'currency'}} = $brow->{'amount'};
+            my ($amount, $currency) = split(/\s+/, $brow->{'balance'});
+            $bal{$brow->{'account_name'}}{$brow->{'issuer'}}{$currency} = $amount;
         }
 
         foreach my $transfer (@{$state->{'transfers'}})

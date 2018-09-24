@@ -50,15 +50,23 @@ my $dbh = DBI->connect($dsn, $db_user, $db_password,
                         mysql_server_prepare => 1});
 die($DBI::errstr) unless $dbh;
 
+my $sth_check_dup = $dbh->prepare
+    ('SELECT count(*) from EOSIO_ACTIONS WHERE global_action_seq=?');
+
+my $sth_set_dup = $dbh->prepare
+    ('UPDATE EOSIO_ACTIONS SET dup_seq=1 WHERE global_action_seq=?');
+
 my $sth_insaction = $dbh->prepare
     ('INSERT INTO EOSIO_ACTIONS ' . 
      '(global_action_seq, block_num, block_time,' .
      'actor_account, recipient_account, action_name, trx_id, jsdata) ' .
      'VALUES(?,?,?,?,?,?,?,?)');
 
+my $sth_lastid = $dbh->prepare('SELECT LAST_INSERT_ID()');
+
 my $sth_insres = $dbh->prepare
     ('INSERT INTO EOSIO_RESOURCE_BALANCES ' . 
-     '(global_action_seq, account_name, ' .
+     '(action_id, account_name, ' .
      'cpu_weight, cpu_used, cpu_available, cpu_max, ' .
      'net_weight, net_used, net_available, net_max, ram_quota, ram_usage) ' .
      'VALUES(?,?,?,?,?,?,?,?,?,?,?,?)');
@@ -76,7 +84,7 @@ my $sth_inslastres = $dbh->prepare
 
 my $sth_inscurr = $dbh->prepare
     ('INSERT INTO EOSIO_CURRENCY_BALANCES ' . 
-     '(global_action_seq, account_name, issuer, currency, amount) ' .
+     '(action_id, account_name, issuer, currency, amount) ' .
      'VALUES(?,?,?,?,?)');
 
 my $sth_inslastcurr = $dbh->prepare
@@ -117,6 +125,10 @@ while( zmq_msg_recv($msg, $socket) != -1 )
         my $block_time =  $action->{'block_time'};
         $block_time =~ s/T/ /;
 
+        $sth_check_dup->execute($seq);
+        my $r = $sth_check_dup->fetchall_arrayref();
+        my $is_duplicate = ($r->[0][0] > 0 ? 1:0);
+            
         $sth_insaction->execute($seq,
                                 $action->{'block_num'},
                                 $block_time,
@@ -125,6 +137,15 @@ while( zmq_msg_recv($msg, $socket) != -1 )
                                 $action->{'action_trace'}{'act'}{'name'},
                                 $action->{'action_trace'}{'trx_id'},
                                 $js);
+
+        $sth_lastid->execute();
+        $r = $sth_lastid->fetchall_arrayref();
+        my $id = $r->[0][0];
+
+        if( $is_duplicate )
+        {
+            $sth_set_dup->execute($seq);
+        }
         
         foreach my $bal (@{$action->{'resource_balances'}})
         {
@@ -143,7 +164,7 @@ while( zmq_msg_recv($msg, $socket) != -1 )
             my $quota = $bal->{'ram_quota'};
             my $usage = $bal->{'ram_usage'};
             
-            $sth_insres->execute($seq,
+            $sth_insres->execute($id,
                                  $account,
                                  $cpuw, $cpulu, $cpula, $cpulm,
                                  $netw, $netlu, $netla, $netlm,
@@ -169,7 +190,7 @@ while( zmq_msg_recv($msg, $socket) != -1 )
             my $issuer = $bal->{'issuer'};
             my ($amount, $currency) = split(/\s+/, $bal->{'balance'});
             
-            $sth_inscurr->execute($seq,
+            $sth_inscurr->execute($id,
                                   $account,
                                   $issuer,
                                   $currency,
@@ -183,17 +204,21 @@ while( zmq_msg_recv($msg, $socket) != -1 )
                                       $seq,
                                       $amount);
         }
-       
+        
         $sth_upd_last_irreversible->execute($action->{'last_irreversible_block'});
     }
     elsif( $msgtype == 1 )  # irreversible block
     {
         my $data = $json->decode($js);
-        if( scalar(@{$data->{'transactions'}}) > 0 )
+        my $trs = $data->{'transactions'};
+        while( (my $len = scalar(@{$trs})) > 0 )
         {
+            my $chunklen = 100;
+            $chunklen = $len if $chunklen > $len;
+            my @chunk = splice(@{$trs}, 0, $chunklen);
             $dbh->do('UPDATE EOSIO_ACTIONS SET irreversible=1 ' .
                      'WHERE trx_id IN (' .
-                     join(',', map {'\'' . $_ . '\''} sort @{$data->{'transactions'}}) .
+                     join(',', map {'\'' . $_ . '\''} sort @chunk) .
                      ')');
         }
     }

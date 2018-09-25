@@ -216,10 +216,21 @@ while( zmq_msg_recv($msg, $socket) != -1 )
             my $chunklen = 100;
             $chunklen = $len if $chunklen > $len;
             my @chunk = splice(@{$trs}, 0, $chunklen);
-            $dbh->do('UPDATE EOSIO_ACTIONS SET irreversible=1 ' .
-                     'WHERE trx_id IN (' .
-                     join(',', map {'\'' . $_ . '\''} sort @chunk) .
-                     ')');
+
+            my %bystatus;
+            foreach my $tx (@chunk)
+            {
+                $bystatus{$tx->{'istatus'}}{$tx->{'trx_id'}} = 1;
+            }
+
+            foreach my $status (sort keys %bystatus)
+            {
+                $dbh->do('UPDATE EOSIO_ACTIONS ' .
+                         'SET irreversible=1, status=' . $status . ' ' .
+                         'WHERE trx_id IN (' .
+                         join(',', map {'\'' . $_ . '\''} sort keys %{$bystatus{$status}}) .
+                         ')');
+            }
         }
     }
 

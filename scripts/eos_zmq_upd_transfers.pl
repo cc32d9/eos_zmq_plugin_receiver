@@ -61,7 +61,7 @@ my $sth_getactions = $dbh->prepare
      ' DATE(block_time) AS bd, block_num, block_time, trx_id, ' .
      ' global_action_seq as seq, jsdata ' .
      'FROM EOSIO_ACTIONS ' .
-     'WHERE global_action_seq > ? AND block_num <= ? AND irreversible=1 ' .
+     'WHERE global_action_seq > ? AND block_num <= ? AND irreversible=1 AND status=0 ' .
      'ORDER BY global_action_seq LIMIT 1000');
 
 my $sth_check_tx = $dbh->prepare

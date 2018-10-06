@@ -210,6 +210,7 @@ while( zmq_msg_recv($msg, $socket) != -1 )
     elsif( $msgtype == 1 )  # irreversible block
     {
         my $data = $json->decode($js);
+        my $block_num = $data->{'block_num'};
         my $trs = $data->{'transactions'};
         while( (my $len = scalar(@{$trs})) > 0 )
         {
@@ -227,7 +228,8 @@ while( zmq_msg_recv($msg, $socket) != -1 )
             {
                 $dbh->do('UPDATE EOSIO_ACTIONS ' .
                          'SET irreversible=1, status=' . $status . ' ' .
-                         'WHERE trx_id IN (' .
+                         'WHERE block_num=' . $block_num . ' AND ' .
+                         'trx_id IN (' .
                          join(',', map {'\'' . $_ . '\''} sort keys %{$bystatus{$status}}) .
                          ')');
             }

@@ -3,8 +3,6 @@ use warnings;
 use JSON;
 use Getopt::Long;
 use DBI;
-use Excel::Writer::XLSX; 
-use Excel::Writer::XLSX::Utility;
 
 $| = 1;
 
@@ -25,7 +23,7 @@ my $ok = GetOptions
 
 if( not $ok or scalar(@ARGV) > 0 )
 {
-    print STDERR "Usage: $0 --acc=NAME --out=FILE.xlsx --start=YYYY-MM-DD [options...]\n",
+    print STDERR "Usage: $0 [options...]\n",
     "The utility updates EOSIO_TRANSFERS table from raw transactions.\n",
     "Options:\n",
     "  --rescan             process the whole history from the beginning\n",
@@ -133,15 +131,12 @@ while(1)
             my $results = $sth_check_tx->fetchall_arrayref();
             if( scalar(@{$results}) > 0 )
             {
-                if( $results->[0][0] eq $tx )
+                if( $results->[0][0] ne $tx )
                 {
-                    next;
+                    printf STDERR ('Found TX=%s for global_seq=%d, but expected %s',
+                                   $tx, $transfer->{'global_seq'}, $results->[0][0]);
                 }
-                else
-                {
-                    die(sprintf('Found TX=%s for global_seq=%d, but expected %s',
-                                $tx, $transfer->{'global_seq'}, $results->[0][0]));
-                }
+                next;
             }
 
             my $issuer = $transfer->{'issuer'};

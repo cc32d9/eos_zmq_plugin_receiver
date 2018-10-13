@@ -1,21 +1,24 @@
 use strict;
 use warnings;
+use utf8;
 use JSON;
 use Getopt::Long;
 use DBI;
 use Excel::Writer::XLSX; 
 use Excel::Writer::XLSX::Utility;
+use Encode qw(decode encode);
 
 my $account;
 my $xlsx_out;
 my $start;
 my $months = 3;
+my $nospam;
 
 my $dsn = 'DBI:mysql:database=eosio;host=localhost';
 my $db_user = 'eosio';
 my $db_password = 'guugh3Ei';
 
-my $json = JSON->new;
+my $json = JSON->new->utf8(1);
 
 my $ok = GetOptions
     ('acc=s'     => \$account,
@@ -24,7 +27,8 @@ my $ok = GetOptions
      'months=i'  => \$months,
      'dsn=s'     => \$dsn,
      'dbuser=s'  => \$db_user,
-     'dbpw=s'    => \$db_password);
+     'dbpw=s'    => \$db_password,
+     'nospam'    => \$nospam);
 
 
 if( not $ok or scalar(@ARGV) > 0 or not defined($account) or
@@ -39,7 +43,8 @@ if( not $ok or scalar(@ARGV) > 0 or not defined($account) or
     "  --months=N           \[$months\] number of months to report\n",
     "  --dsn=DSN            \[$dsn\]\n",
     "  --dbuser=USER        \[$db_user\]\n",
-    "  --dbpw=PASSWORD      \[$db_password\]\n" ;
+    "  --dbpw=PASSWORD      \[$db_password\]\n",
+    "  --nospam             skip payments of 0.0002 or less\n";
     exit 1;
 }
 
@@ -149,10 +154,10 @@ my $sth = $dbh->prepare
      'FROM EOSIO_ACTIONS ' .
      'JOIN ' .
      'EOSIO_RESOURCE_BALANCES ON ' .
-     '  EOSIO_RESOURCE_BALANCES.global_action_seq=EOSIO_ACTIONS.global_action_seq ' .
+     '  EOSIO_RESOURCE_BALANCES.action_id=EOSIO_ACTIONS.id ' .
      'JOIN ' .
      'EOSIO_CURRENCY_BALANCES ON ' .
-     '  EOSIO_CURRENCY_BALANCES.global_action_seq=EOSIO_ACTIONS.global_action_seq AND ' .
+     '  EOSIO_CURRENCY_BALANCES.action_id=EOSIO_ACTIONS.id AND ' .
      '  EOSIO_CURRENCY_BALANCES.account_name=EOSIO_RESOURCE_BALANCES.account_name ' .
      'WHERE EOSIO_CURRENCY_BALANCES.account_name=? AND ' .
      '  block_time BETWEEN ? AND DATE_ADD(?, INTERVAL ? MONTH) ' .
@@ -176,7 +181,7 @@ while( my $r = $sth->fetchrow_hashref('NAME_lc') )
 
     $last_ts = $r->{'block_time'};
     
-    my $action = $json->decode($r->{'jsdata'});
+    my $action = $json->decode( decode('UTF-8', $r->{'jsdata'}, Encode::FB_CROAK) );
     my $atrace = $action->{'action_trace'};
 
     foreach my $colname (@transfer_columns)
@@ -243,7 +248,16 @@ while( my $r = $sth->fetchrow_hashref('NAME_lc') )
             }
         }
     }
-        
+
+    if( $nospam and defined($r->{'quantity'}) and $r->{'quantity'} =~ /^[0-9.]+\s+\w+$/ )
+    {
+        my ($amt, $curr) = split(/\s+/, $r->{'quantity'});
+        if( $amt <= 0.0002 )
+        {
+            next;
+        }
+    }
+    
     $row++;
     $col = 0;
     

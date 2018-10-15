@@ -129,6 +129,8 @@ my $sighandler = sub {
     print STDERR ("Disconnecting the ZMQ socket\n");
     zmq_disconnect($socket, $connectstr);
     zmq_close($socket);
+    $dbh->commit();
+    $dbh->disconnect();
     print STDERR ("Finished\n");
     exit;
 };

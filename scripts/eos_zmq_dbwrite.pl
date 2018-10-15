@@ -65,7 +65,7 @@ my $sth_wipe_block_actions = $dbh->prepare
 
 
 my $sth_insaction = $dbh->prepare
-    ('INSERT INTO EOSIO_ACTIONS ' .
+    ('INSERT IGNORE INTO EOSIO_ACTIONS ' .
      '(global_action_seq, block_num, block_time,' .
      'actor_account, recipient_account, action_name, trx_id, jsdata) ' .
      'VALUES(?,?,?,?,?,?,?,?)');
@@ -74,7 +74,7 @@ my $sth_upd_irrev = $dbh->prepare
     ('UPDATE EOSIO_ACTIONS SET irreversible=1 WHERE block_num=?');
 
 my $sth_insres = $dbh->prepare
-    ('INSERT INTO EOSIO_RESOURCE_BALANCES ' .
+    ('INSERT IGNORE INTO EOSIO_RESOURCE_BALANCES ' .
      '(global_seq, account_name, ' .
      'cpu_weight, cpu_used, cpu_available, cpu_max, ' .
      'net_weight, net_used, net_available, net_max, ram_quota, ram_usage) ' .
@@ -92,7 +92,7 @@ my $sth_inslastres = $dbh->prepare
      'ram_quota=?, ram_usage=?');
 
 my $sth_inscurr = $dbh->prepare
-    ('INSERT INTO EOSIO_CURRENCY_BALANCES ' .
+    ('INSERT IGNORE INTO EOSIO_CURRENCY_BALANCES ' .
      '(global_seq, account_name, contract, currency, amount) ' .
      'VALUES(?,?,?,?,?)');
 
@@ -107,13 +107,13 @@ my $sth_upd_last_irreversible = $dbh->prepare
 
 
 my $sth_add_transfer = $dbh->prepare
-    ('INSERT INTO EOSIO_TRANSFERS ' .
+    ('INSERT IGNORE INTO EOSIO_TRANSFERS ' .
      '(seq, global_seq, block_num, block_time, trx_id, ' .
      'contract, currency, amount, tx_from, tx_to, memo, bal_from, bal_to) ' .
      'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
 
 my $sth_add_history = $dbh->prepare
-    ('INSERT INTO EOSIO_ACC_HISTORY ' .
+    ('INSERT IGNORE INTO EOSIO_ACC_HISTORY ' .
      '(global_seq, block_num, block_time, trx_id, ' .
      'account_name, contract, action_name) ' .
      'VALUES(?,?,?,?,?,?,?)');
@@ -124,6 +124,19 @@ my $socket = zmq_socket( $ctxt, ZMQ_PULL );
 
 my $rv = zmq_connect( $socket, $connectstr );
 die($!) if $rv;
+
+my $sighandler = sub {
+    print STDERR ("Disconnecting the ZMQ socket\n");
+    zmq_disconnect($socket, $connectstr);
+    zmq_close($socket);
+    print STDERR ("Finished\n");
+    exit;
+};
+
+
+$SIG{'HUP'} = $sighandler;
+$SIG{'TERM'} = $sighandler;
+$SIG{'INT'} = $sighandler;
 
 
 my $json = JSON->new->pretty->canonical;
@@ -297,7 +310,10 @@ while( zmq_msg_recv($msg, $socket) != -1 )
             }
         }
 
-        $sth_ins_block->execute($block_num, $digest);
+        if( not $block_already_in_db )
+        {
+            $sth_ins_block->execute($block_num, $digest);
+        }
     }
     elsif( $msgtype == 1 )  # irreversible block
     {
@@ -312,8 +328,9 @@ while( zmq_msg_recv($msg, $socket) != -1 )
         my $data = $json->decode($js);
         my $block_num = $data->{'invalid_block_num'};
         printf STDERR ("Fork event received at block number %d\n", $block_num);
+        $sth_wipe_block->execute($block_num);
+        $sth_wipe_block_actions->execute($block_num);
     }
-
 
     $uncommitted++;
     if( $uncommitted >= $commit_every )

@@ -44,6 +44,7 @@ die($!) if $rv;
 
 my @s_push;
 my @s_pub;
+my %connections;
 
 foreach my $ep (@ep_push)
 {
@@ -51,16 +52,36 @@ foreach my $ep (@ep_push)
     $rv = zmq_bind( $s, $ep );
     die($!) if $rv;
     push(@s_push, $s);
+    $connections{$ep} = $s;
 }
 
 foreach my $ep (@ep_pub)
 {
     my $s = zmq_socket( $ctxt, ZMQ_PUB );
+    my $rv = zmq_setsockopt( $s, ZMQ_LINGER, 0 );
+    die($!) if $rv;
     $rv = zmq_bind( $s, $ep );
     die($!) if $rv;
     push(@s_pub, $s);
+    $connections{$ep} = $s;
 }
     
+
+my $sighandler = sub {
+    print STDERR ("Disconnecting all ZMQ sockets\n");
+    foreach my $ep (keys %connections)
+    {
+        zmq_disconnect($connections{$ep}, $ep);
+        zmq_close($connections{$ep});
+    }
+    print STDERR ("Finished\n");
+    exit;
+};
+
+
+$SIG{'HUP'} = $sighandler;
+$SIG{'TERM'} = $sighandler;
+$SIG{'INT'} = $sighandler;
 
 
 my $inmsg = zmq_msg_init();

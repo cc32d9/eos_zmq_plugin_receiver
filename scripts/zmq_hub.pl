@@ -4,7 +4,7 @@ use ZMQ::LibZMQ3;
 use ZMQ::Constants ':all';
 use Getopt::Long;
 
-
+$| = 1;
 
 my $ep_pull;
 my @ep_push;
@@ -59,6 +59,8 @@ foreach my $ep (@ep_pub)
 {
     my $s = zmq_socket( $ctxt, ZMQ_PUB );
     my $rv = zmq_setsockopt( $s, ZMQ_LINGER, 0 );
+    die($!) if $rv;
+    $rv = zmq_setsockopt( $s, ZMQ_SNDTIMEO, 0 );
     die($!) if $rv;
     $rv = zmq_bind( $s, $ep );
     die($!) if $rv;

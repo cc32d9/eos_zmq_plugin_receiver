@@ -27,7 +27,8 @@ if( not $ok or scalar(@ARGV) > 0 or
     "dumps incoming messages to stdout\n",
     "Options:\n",
     "  --pull=ENDPOINT  connect to a PUSH socket\n",
-    "  --sub=ENDPOINT   connect to a PUB socket\n";
+    "  --sub=ENDPOINT   connect to a PUB socket\n",
+    "  --short          display only brief information\n";
     exit 1;
 }
 
@@ -76,11 +77,36 @@ while( zmq_msg_recv($msg, $socket) != -1 )
 {
     my $data = zmq_msg_data($msg);
     my ($msgtype, $opts, $js) = unpack('VVa*', $data);
-    printf("%d %d\n", $msgtype, $opts);
-    if( not $short )
+    $data = $json->decode($js);
+    if( $short )
     {
-        my $action = $json->decode($js);
-        print $json->encode($action);
+        my $out = $msgtype . ' ' .  $opts . ' ';
+        if( $msgtype == 0 )
+        {
+            $out .= $data->{'block_time'} . ' ' .
+                substr($data->{'action_trace'}{'trx_id'}, 0, 8) . ' ' .
+                $data->{'action_trace'}{'act'}{'account'} . ' ' .
+                $data->{'action_trace'}{'act'}{'name'};
+        }
+        elsif( $msgtype == 3 )  # accepted block
+        {
+            $out .= 'accepted ' . $data->{'accepted_block_num'};
+        }
+        elsif( $msgtype == 1 )  # irreversible block
+        {
+            $out .= 'irreversible ' . $data->{'irreversible_block_num'};
+        }
+        elsif( $msgtype == 2 )  # fork
+        {
+            $out .= 'fork ' . $data->{'invalid_block_num'};
+        }
+
+        print $out, "\n";
+    }
+    else
+    {
+        printf("%d %d\n", $msgtype, $opts);
+        print $json->encode($data);
         print "\n";
     }
 }

@@ -10,10 +10,12 @@ $| = 1;
 
 my $ep_pull;
 my $ep_sub;
+my $short;
 
 my $ok = GetOptions
     ('pull=s' => \$ep_pull,
-     'sub=s'  => \$ep_sub);
+     'sub=s'  => \$ep_sub,
+     'short'  => \$short);
 
 
 if( not $ok or scalar(@ARGV) > 0 or
@@ -74,10 +76,13 @@ while( zmq_msg_recv($msg, $socket) != -1 )
 {
     my $data = zmq_msg_data($msg);
     my ($msgtype, $opts, $js) = unpack('VVa*', $data);
-    my $action = $json->decode($js);
     printf("%d %d\n", $msgtype, $opts);
-    print $json->encode($action);
-    print "\n";
+    if( not $short )
+    {
+        my $action = $json->decode($js);
+        print $json->encode($action);
+        print "\n";
+    }
 }
 
 print "The stream ended\n";

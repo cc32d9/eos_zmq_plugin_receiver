@@ -1,5 +1,6 @@
 use strict;
 use warnings;
+use utf8;
 use ZMQ::LibZMQ3;
 use ZMQ::Constants ':all';
 use JSON;
@@ -121,7 +122,6 @@ my $sth_add_history = $dbh->prepare
 
 my $ctxt = zmq_init;
 my $socket = zmq_socket( $ctxt, ZMQ_PULL );
-
 my $rv = zmq_connect( $socket, $connectstr );
 die($!) if $rv;
 
@@ -364,23 +364,39 @@ sub retrieve_transfers
             my $aname = $act->{'name'};
             my $data = $act->{'data'};
 
-            if( ref($data) eq 'HASH' and
-                ($aname eq 'transfer' or $aname eq 'issue' or $aname eq 'create') )
+            if( ref($data) eq 'HASH' )
             {
-                if( defined($data->{'quantity'}) and defined($data->{'to'}) )
+                if( ($aname eq 'transfer' or $aname eq 'issue') and 
+                    defined($data->{'quantity'}) and defined($data->{'to'}) )
                 {
                     my ($amount, $currency) = split(/\s+/, $data->{'quantity'});
-
-                    push(@{$state->{'transfers'}}, {
-                        'global_seq' => $gseq,
-                        'contract' => $act->{'account'},
-                        'currency' => $currency,
-                        'amount' => $amount,
-                        'tx_from' => $data->{'from'},
-                        'tx_to' => $data->{'to'},
-                        'memo' => $data->{'memo'},
-                         });
+                    if( defined($amount) and defined($currency) and
+                        $amount =~ /^[0-9.]+$/ and $currency =~ /^[A-Z]{1,7}$/ )
+                    {
+                        push(@{$state->{'transfers'}}, {
+                            'global_seq' => $gseq,
+                            'contract' => $act->{'account'},
+                            'currency' => $currency,
+                            'amount' => $amount,
+                            'tx_from' => $data->{'from'},
+                            'tx_to' => $data->{'to'},
+                            'memo' => $data->{'memo'},
+                             });
+                    }
                 }
+                elsif( $aname eq 'open' and defined($data->{'owner'}) and
+                       defined($data->{'symbol'}) and $data->{'symbol'} =~ /^[A-Z]{1,7}$/ )
+                {
+                        push(@{$state->{'transfers'}}, {
+                            'global_seq' => $gseq,
+                            'contract' => $act->{'account'},
+                            'currency' => $data->{'symbol'},
+                            'amount' => 0,
+                            'tx_from' => undef,
+                            'tx_to' => $data->{'owner'},
+                            'memo' => '',
+                             });
+                }                       
             }
         }
     }

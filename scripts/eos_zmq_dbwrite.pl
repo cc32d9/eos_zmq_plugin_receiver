@@ -150,6 +150,7 @@ my $block_already_in_db = 0;
 my $msg = zmq_msg_init();
 while( zmq_msg_recv($msg, $socket) != -1 )
 {
+    $uncommitted++;
     my $data = zmq_msg_data($msg);
     my ($msgtype, $opts, $js) = unpack('VVa*', $data);
     if( $msgtype == 0 )  # action and balances
@@ -223,6 +224,7 @@ while( zmq_msg_recv($msg, $socket) != -1 )
                                       $account,
                                       $actor,
                                       $action_name);
+            $uncommitted+=3;
         }
 
         my %bal;
@@ -248,6 +250,7 @@ while( zmq_msg_recv($msg, $socket) != -1 )
                                       $amount,
                                       $seq,
                                       $amount);
+            $uncommitted+=2;
         }
 
         my $atrace = $action->{'action_trace'};
@@ -286,6 +289,8 @@ while( zmq_msg_recv($msg, $socket) != -1 )
                  $bal_from,
                  $bal_to,
                 );
+            
+            $uncommitted++;
         }
     }
     elsif( $msgtype == 3 )  # accepted block
@@ -305,6 +310,7 @@ while( zmq_msg_recv($msg, $socket) != -1 )
                 printf STDERR ("Fork detected at block number %d\n", $block_num);
                 $sth_wipe_block->execute($block_num);
                 $sth_wipe_block_actions->execute($block_num);
+                $uncommitted+=100;
             }
             else
             {
@@ -324,6 +330,7 @@ while( zmq_msg_recv($msg, $socket) != -1 )
 
         $sth_upd_last_irreversible->execute($block_num);
         $sth_upd_irrev->execute($block_num);
+        $uncommitted+=10;
     }
     elsif( $msgtype == 2 )  # fork
     {
@@ -332,9 +339,9 @@ while( zmq_msg_recv($msg, $socket) != -1 )
         printf STDERR ("Fork event received at block number %d\n", $block_num);
         $sth_wipe_block->execute($block_num);
         $sth_wipe_block_actions->execute($block_num);
+        $uncommitted+=100;
     }
 
-    $uncommitted++;
     if( $uncommitted >= $commit_every )
     {
         $dbh->commit();

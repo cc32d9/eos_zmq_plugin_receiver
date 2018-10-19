@@ -3,6 +3,7 @@ use warnings;
 use utf8;
 use ZMQ::LibZMQ3;
 use ZMQ::Constants ':all';
+use Net::AMQP::RabbitMQ;
 use JSON;
 use Getopt::Long;
 use DBI;
@@ -10,6 +11,14 @@ use DBI;
 $| = 1;
 
 my $connectstr = 'tcp://127.0.0.1:5556';
+
+my $rabbitmq_host = '127.0.0.1';
+my $rabbitmq_user = 'guest';
+my $rabbitmq_password = 'guest';
+my $rabbitmq_channel = 1;
+my $rabbitmq_queue;
+
+
 my $dsn = 'DBI:mysql:database=eosio;host=localhost';
 my $db_user = 'eosio';
 my $db_password = 'guugh3Ei';
@@ -21,6 +30,7 @@ my @blacklist_acc;
 
 my $ok = GetOptions
     ('connect=s' => \$connectstr,
+     'rqueue=s'  => \$rabbitmq_queue,
      'dsn=s'     => \$dsn,
      'dbuser=s'  => \$db_user,
      'dbpw=s'    => \$db_password,
@@ -120,6 +130,15 @@ my $sth_add_history = $dbh->prepare
      'VALUES(?,?,?,?,?,?,?)');
 
 
+my $mq;
+if( defined($rabbitmq_queue) )
+{
+    $mq = Net::AMQP::RabbitMQ->new();
+    $mq->connect($rabbitmq_host, { user => $rabbitmq_user, password => $rabbitmq_password });
+    $mq->channel_open($rabbitmq_channel); 
+}
+
+
 my $ctxt = zmq_init;
 my $socket = zmq_socket( $ctxt, ZMQ_PULL );
 my $rv = zmq_connect( $socket, $connectstr );
@@ -147,17 +166,47 @@ my $uncommitted = 0;
 # if the block with the same number and digest is in the database, skip inserting actions
 my $block_already_in_db = 0;
 
-my $msg = zmq_msg_init();
-while( zmq_msg_recv($msg, $socket) != -1 )
+my $msg;
+
+if( not defined($rabbitmq_queue) )
 {
+    $msg = zmq_msg_init();
+}
+
+while(1)
+{
+    my $data;
+    if( defined($rabbitmq_queue) )
+    {
+        my $content = $mq->get($rabbitmq_channel, $rabbitmq_queue);
+        if( not defined($content) )
+        {
+            sleep 1;
+            next;
+        }
+        $data = $content->{'body'};
+    }
+    else
+    {
+        if( zmq_msg_recv($msg, $socket) == -1 )
+        {
+            die($!);
+        }
+        $data = zmq_msg_data($msg);
+    }
+    
     $uncommitted++;
-    my $data = zmq_msg_data($msg);
     my ($msgtype, $opts, $js) = unpack('VVa*', $data);
     if( $msgtype == 0 )  # action and balances
     {
         next if $block_already_in_db;
 
-        my $action = $json->decode($js);
+        my $action = eval { $json->decode($js) };
+        if( $@ )
+        {
+            print STDERR $@, "\n", $js, "\n";
+            next;
+        }        
 
         my $actor = $action->{'action_trace'}{'act'}{'account'};
         next if $blacklist{$actor};

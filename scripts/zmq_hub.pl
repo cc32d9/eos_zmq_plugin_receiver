@@ -1,7 +1,6 @@
 use strict;
 use warnings;
-use ZMQ::LibZMQ3;
-use ZMQ::Constants ':all';
+use ZMQ::Raw;
 use Getopt::Long;
 
 $| = 1;
@@ -33,14 +32,11 @@ if( not $ok or scalar(@ARGV) > 0 or not $ep_pull or
 }
 
 
-my $ctxt = zmq_init;
+my $ctxt = ZMQ::Raw::Context->new;
 
-
-my $s_pull = zmq_socket( $ctxt, ZMQ_PULL );
-my $rv = zmq_setsockopt( $s_pull, ZMQ_RCVHWM, $rcvbuf );
-die($!) if $rv;
-$rv = zmq_connect( $s_pull, $ep_pull );
-die($!) if $rv;
+my $s_pull = ZMQ::Raw::Socket->new ($ctxt, ZMQ::Raw->ZMQ_PULL );
+$s_pull->setsockopt( ZMQ::Raw::Socket->ZMQ_RCVHWM, $rcvbuf );
+$s_pull->connect( $ep_pull );
 
 my @s_push;
 my @s_pub;
@@ -48,22 +44,18 @@ my %connections;
 
 foreach my $ep (@ep_push)
 {
-    my $s =  zmq_socket( $ctxt, ZMQ_PUSH );
-    $rv = zmq_bind( $s, $ep );
-    die($!) if $rv;
+    my $s = ZMQ::Raw::Socket->new ($ctxt, ZMQ::Raw->ZMQ_PUSH );
+    $s->bind( $ep );
     push(@s_push, $s);
     $connections{$ep} = $s;
 }
 
 foreach my $ep (@ep_pub)
 {
-    my $s = zmq_socket( $ctxt, ZMQ_PUB );
-    my $rv = zmq_setsockopt( $s, ZMQ_LINGER, 0 );
-    die($!) if $rv;
-    $rv = zmq_setsockopt( $s, ZMQ_SNDTIMEO, 0 );
-    die($!) if $rv;
-    $rv = zmq_bind( $s, $ep );
-    die($!) if $rv;
+    my $s = ZMQ::Raw::Socket->new ($ctxt, ZMQ::Raw->ZMQ_PUB );
+    $s->setsockopt( ZMQ::Raw::Socket->ZMQ_LINGER, 0 );
+    $s->setsockopt( ZMQ::Raw::Socket->ZMQ_SNDTIMEO, 0 );
+    $s->bind( $ep );
     push(@s_pub, $s);
     $connections{$ep} = $s;
 }
@@ -73,8 +65,8 @@ my $sighandler = sub {
     print STDERR ("Disconnecting all ZMQ sockets\n");
     foreach my $ep (keys %connections)
     {
-        zmq_disconnect($connections{$ep}, $ep);
-        zmq_close($connections{$ep});
+        $connections{$ep}->disconnect($ep);
+        $connections{$ep}->close();
     }
     print STDERR ("Finished\n");
     exit;
@@ -86,17 +78,14 @@ $SIG{'TERM'} = $sighandler;
 $SIG{'INT'} = $sighandler;
 
 
-my $inmsg = zmq_msg_init();
-while( zmq_msg_recv($inmsg, $s_pull) != -1 )
+while(1)
 {
-    my $indata = zmq_msg_data( $inmsg );
+    my $indata = $s_pull->recv();
     foreach my $s (@s_push, @s_pub)
     {
-        my $outmsg = zmq_msg_init_data($indata);
-        zmq_msg_send($outmsg, $s);
+        $s->send($indata);
     }
 }
 
 
-print STDERR "The stream ended\n";
 

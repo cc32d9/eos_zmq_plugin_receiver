@@ -1,8 +1,7 @@
 use strict;
 use warnings;
 use utf8;
-use ZMQ::LibZMQ3;
-use ZMQ::Constants ':all';
+use ZMQ::Raw;
 use JSON;
 use Getopt::Long;
 use DBI;
@@ -120,15 +119,14 @@ my $sth_add_history = $dbh->prepare
      'VALUES(?,?,?,?,?,?,?)');
 
 
-my $ctxt = zmq_init;
-my $socket = zmq_socket( $ctxt, ZMQ_PULL );
-my $rv = zmq_connect( $socket, $connectstr );
-die($!) if $rv;
+my $ctxt = ZMQ::Raw::Context->new;
+my $socket = ZMQ::Raw::Socket->new ($ctxt, ZMQ::Raw->ZMQ_PULL );
+$socket->connect( $connectstr );
 
 my $sighandler = sub {
     print STDERR ("Disconnecting the ZMQ socket\n");
-    zmq_disconnect($socket, $connectstr);
-    zmq_close($socket);
+    $socket->disconnect($connectstr);
+    $socket->close();
     $dbh->commit();
     $dbh->disconnect();
     print STDERR ("Finished\n");
@@ -147,11 +145,11 @@ my $uncommitted = 0;
 # if the block with the same number and digest is in the database, skip inserting actions
 my $block_already_in_db = 0;
 
-my $msg = zmq_msg_init();
-while( zmq_msg_recv($msg, $socket) != -1 )
+
+while(1)
 {
     $uncommitted++;
-    my $data = zmq_msg_data($msg);
+    my $data = $socket->recv();
     my ($msgtype, $opts, $js) = unpack('VVa*', $data);
     if( $msgtype == 0 )  # action and balances
     {

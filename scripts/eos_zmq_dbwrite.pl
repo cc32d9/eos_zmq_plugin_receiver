@@ -10,7 +10,7 @@ use DBI;
 $| = 1;
 
 my $connectstr = 'tcp://127.0.0.1:5556';
-my $dsn = 'DBI:mysql:database=eosio;host=localhost';
+my $dsn = 'DBI:MariaDB:database=eosio;host=localhost';
 my $db_user = 'eosio';
 my $db_password = 'guugh3Ei';
 my $commit_every = 100;
@@ -49,7 +49,7 @@ foreach my $bl ( @blacklist_acc )
 
 my $dbh = DBI->connect($dsn, $db_user, $db_password,
                        {'RaiseError' => 1, AutoCommit => 0,
-                        mysql_server_prepare => 1});
+                        mariadb_server_prepare => 1});
 die($DBI::errstr) unless $dbh;
 
 my $sth_check_block = $dbh->prepare

@@ -1,6 +1,7 @@
 use strict;
 use warnings;
 use utf8;
+use threads qw(yield);
 use ZMQ::Raw;
 use JSON;
 use Getopt::Long;
@@ -121,6 +122,7 @@ my $sth_add_history = $dbh->prepare
 
 my $ctxt = ZMQ::Raw::Context->new;
 my $socket = ZMQ::Raw::Socket->new ($ctxt, ZMQ::Raw->ZMQ_PULL );
+$socket->setsockopt(ZMQ::Raw::Socket->ZMQ_RCVBUF, 10240);
 $socket->connect( $connectstr );
 
 my $sighandler = sub {

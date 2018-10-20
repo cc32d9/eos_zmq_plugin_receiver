@@ -35,6 +35,7 @@ if( not $ok or scalar(@ARGV) > 0 or not $ep_pull or
 my $ctxt = ZMQ::Raw::Context->new;
 
 my $s_pull = ZMQ::Raw::Socket->new ($ctxt, ZMQ::Raw->ZMQ_PULL );
+$s_pull->setsockopt(ZMQ::Raw::Socket->ZMQ_RCVBUF, 10240);
 $s_pull->setsockopt( ZMQ::Raw::Socket->ZMQ_RCVHWM, $rcvbuf );
 $s_pull->connect( $ep_pull );
 

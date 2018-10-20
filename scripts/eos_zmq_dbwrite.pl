@@ -13,7 +13,6 @@ my $connectstr = 'tcp://127.0.0.1:5556';
 my $dsn = 'DBI:MariaDB:database=eosio;host=localhost';
 my $db_user = 'eosio';
 my $db_password = 'guugh3Ei';
-my $commit_every = 100;
 
 my %blacklist = ('blocktwitter' => 1);
 my @blacklist_acc;
@@ -57,12 +56,6 @@ my $sth_check_block = $dbh->prepare
 
 my $sth_ins_block = $dbh->prepare
     ('INSERT INTO EOSIO_BLOCKS (block_num, block_digest) VALUES(?,?)');
-
-my $sth_wipe_block = $dbh->prepare
-    ('DELETE FROM EOSIO_BLOCKS WHERE block_num >= ?');
-
-my $sth_wipe_block_actions = $dbh->prepare
-    ('DELETE FROM EOSIO_ACTIONS WHERE block_num >= ?');
 
 
 my $sth_insaction = $dbh->prepare
@@ -142,7 +135,6 @@ $SIG{'INT'} = $sighandler;
 
 
 my $json = JSON->new->pretty->canonical;
-my $uncommitted = 0;
 
 # if the block with the same number and digest is in the database, skip inserting actions
 my $block_already_in_db = 0;
@@ -150,7 +142,6 @@ my $block_already_in_db = 0;
 my $msg = zmq_msg_init();
 while( zmq_msg_recv($msg, $socket) != -1 )
 {
-    $uncommitted++;
     my $data = zmq_msg_data($msg);
     my ($msgtype, $opts, $js) = unpack('VVa*', $data);
     if( $msgtype == 0 )  # action and balances
@@ -224,7 +215,6 @@ while( zmq_msg_recv($msg, $socket) != -1 )
                                       $account,
                                       $actor,
                                       $action_name);
-            $uncommitted+=3;
         }
 
         my %bal;
@@ -250,7 +240,6 @@ while( zmq_msg_recv($msg, $socket) != -1 )
                                       $amount,
                                       $seq,
                                       $amount);
-            $uncommitted+=2;
         }
 
         my $atrace = $action->{'action_trace'};
@@ -290,7 +279,6 @@ while( zmq_msg_recv($msg, $socket) != -1 )
                  $bal_to,
                 );
             
-            $uncommitted++;
         }
     }
     elsif( $msgtype == 3 )  # accepted block
@@ -308,9 +296,7 @@ while( zmq_msg_recv($msg, $socket) != -1 )
             if( $r->[0][0] ne $digest )
             {
                 printf STDERR ("Fork detected at block number %d\n", $block_num);
-                $sth_wipe_block->execute($block_num);
-                $sth_wipe_block_actions->execute($block_num);
-                $uncommitted+=100;
+                wipe_blocks($block_num);
             }
             else
             {
@@ -327,32 +313,33 @@ while( zmq_msg_recv($msg, $socket) != -1 )
     {
         my $data = $json->decode($js);
         my $block_num = $data->{'irreversible_block_num'};
-
         $sth_upd_last_irreversible->execute($block_num);
         $sth_upd_irrev->execute($block_num);
-        $uncommitted+=10;
     }
     elsif( $msgtype == 2 )  # fork
     {
         my $data = $json->decode($js);
         my $block_num = $data->{'invalid_block_num'};
         printf STDERR ("Fork event received at block number %d\n", $block_num);
-        $sth_wipe_block->execute($block_num);
-        $sth_wipe_block_actions->execute($block_num);
-        $uncommitted+=100;
+        wipe_blocks($block_num);
     }
 
-    if( $uncommitted >= $commit_every )
-    {
-        $dbh->commit();
-        $uncommitted = 0;
-    }
+    $dbh->commit();
 }
 
 
 print STDERR "The stream ended\n";
 $dbh->disconnect();
 exit(0);
+
+sub wipe_blocks
+{
+    my $block_num = shift;
+    $dbh->do('DELETE FROM EOSIO_BLOCKS WHERE block_num >= ' . $block_num);
+    $dbh->do('DELETE FROM EOSIO_ACTIONS WHERE block_num >= ' . $block_num);
+}
+
+
 
 
 sub retrieve_transfers

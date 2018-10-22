@@ -1,7 +1,6 @@
 use strict;
 use warnings;
 use utf8;
-use threads qw(yield);
 use ZMQ::Raw;
 use JSON;
 use Getopt::Long;

@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use ZMQ::LibZMQ3;
+use ZMQ::Raw;
 use ZMQ::Constants ':all';
 use JSON;
 use Getopt::Long;
@@ -34,32 +34,31 @@ if( not $ok or scalar(@ARGV) > 0 or
 
 
 
-my $ctxt = zmq_init;
+my $ctxt = ZMQ::Raw::Context->new;
 my $socket;
 my $connectstr;
 
 if( defined($ep_pull) )
 {
     $connectstr = $ep_pull;
-    $socket = zmq_socket($ctxt, ZMQ_PULL);
-    my $rv = zmq_connect( $socket, $connectstr );
-    die($!) if $rv;
+    $socket = ZMQ::Raw::Socket->new ($ctxt, ZMQ::Raw->ZMQ_PULL );
+    $socket->setsockopt(ZMQ::Raw::Socket->ZMQ_RCVBUF, 10240);
+    $socket->connect( $connectstr );
 }
 else
 {
     $connectstr = $ep_sub;
-    $socket = zmq_socket($ctxt, ZMQ_SUB);
-    my $rv = zmq_connect( $socket, $connectstr );
-    die($!) if $rv;
-    $rv = zmq_setsockopt( $socket, ZMQ_SUBSCRIBE, '' );
-    die($!) if $rv;
+    $socket = ZMQ::Raw::Socket->new ($ctxt, ZMQ::Raw->ZMQ_SUB );
+    $socket->setsockopt(ZMQ::Raw::Socket->ZMQ_RCVBUF, 10240);
+    $socket->setsockopt(ZMQ::Raw::Socket->ZMQ_SUBSCRIBE, '' );
+    $socket->connect( $connectstr );
 }    
 
 
 my $sighandler = sub {
     print STDERR ("Disconnecting the ZMQ socket\n");
-    zmq_disconnect($socket, $connectstr);
-    zmq_close($socket);
+    $socket->disconnect($connectstr);
+    $socket->close();
     print STDERR ("Finished\n");
     exit;
 };
@@ -72,10 +71,9 @@ $SIG{'INT'} = $sighandler;
 
 my $json = JSON->new->pretty->canonical;
 
-my $msg = zmq_msg_init();
-while( zmq_msg_recv($msg, $socket) != -1 )
+while(1)
 {
-    my $data = zmq_msg_data($msg);
+    my $data = $socket->recv();
     my ($msgtype, $opts, $js) = unpack('VVa*', $data);
     $data = $json->decode($js);
     if( $short )

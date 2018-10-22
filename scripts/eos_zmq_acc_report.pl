@@ -14,7 +14,7 @@ my $start;
 my $months = 3;
 my $nospam;
 
-my $dsn = 'DBI:mysql:database=eosio;host=localhost';
+my $dsn = 'DBI:MariaDB:database=eosio;host=localhost';
 my $db_user = 'eosio';
 my $db_password = 'guugh3Ei';
 

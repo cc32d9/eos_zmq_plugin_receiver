@@ -6,10 +6,9 @@ use DBI;
 $| = 1;
 
 my $connectstr = 'tcp://127.0.0.1:5556';
-my $dsn = 'DBI:mysql:database=eosio;host=localhost';
+my $dsn = 'DBI:MariaDB:database=eosio;host=localhost';
 my $db_user = 'eosio';
 my $db_password = 'guugh3Ei';
-my $commit_every = 10;
 
 my %blacklist = ('blocktwitter' => 1);
 my @blacklist_acc;
@@ -50,7 +49,7 @@ die($DBI::errstr) unless $dbh;
 my $sth_find = $dbh->prepare
     ('SELECT global_action_seq FROM EOSIO_ACTIONS ' .
      'WHERE actor_account IN (' .
-     join(',', map {'\'' . $_ . '\''} keys %blacklist) . ') LIMIT 100');
+     join(',', map {'\'' . $_ . '\''} keys %blacklist) . ') LIMIT 1000');
 
 my $sth_del_act = $dbh->prepare
     ('DELETE FROM EOSIO_ACTIONS WHERE global_action_seq=?');

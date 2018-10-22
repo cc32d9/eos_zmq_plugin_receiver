@@ -1,7 +1,6 @@
 use strict;
 use warnings;
 use ZMQ::Raw;
-use ZMQ::Constants ':all';
 use JSON;
 use Getopt::Long;
 

@@ -12,7 +12,7 @@ my $connectstr = 'tcp://127.0.0.1:5556';
 my $dsn = 'DBI:MariaDB:database=eosio;host=localhost';
 my $db_user = 'eosio';
 my $db_password = 'guugh3Ei';
-my $commit_every = 100;
+my $commit_every = 1000;
 
 my %blacklist = ('blocktwitter' => 1);
 my @blacklist_acc;
@@ -309,7 +309,7 @@ while(1)
                 printf STDERR ("Fork detected at block number %d\n", $block_num);
                 $sth_wipe_block->execute($block_num);
                 $sth_wipe_block_actions->execute($block_num);
-                $uncommitted+=100;
+                $uncommitted += $commit_every;
             }
             else
             {
@@ -329,7 +329,7 @@ while(1)
 
         $sth_upd_last_irreversible->execute($block_num);
         $sth_upd_irrev->execute($block_num);
-        $uncommitted+=10;
+        $uncommitted += 10;
     }
     elsif( $msgtype == 2 )  # fork
     {
@@ -338,7 +338,7 @@ while(1)
         printf STDERR ("Fork event received at block number %d\n", $block_num);
         $sth_wipe_block->execute($block_num);
         $sth_wipe_block_actions->execute($block_num);
-        $uncommitted+=100;
+        $uncommitted += $commit_every;
     }
 
     if( $uncommitted >= $commit_every )

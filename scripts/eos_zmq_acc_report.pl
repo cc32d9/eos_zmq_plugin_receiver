@@ -7,6 +7,7 @@ use DBI;
 use Excel::Writer::XLSX; 
 use Excel::Writer::XLSX::Utility;
 use Encode qw(decode encode);
+use Compress::LZ4;
 
 my $account;
 my $xlsx_out;
@@ -70,7 +71,7 @@ my $start_date = sprintf('%.4d-%.2d-%.2d', $year, $month, $day);
 my @columns =
     ('block_time', 'seq', 'actor', 'action', 'recipient',
      'from', 'to', 'quantity', 'memo',
-     'issuer', 'currency', 'balance', 'cpu_stake', 'net_stake',
+     'contract', 'currency', 'balance', 'cpu_stake', 'net_stake',
      'ram_quota', 'ram_usage', 'trx_id');
 
 my @transfer_columns =
@@ -106,7 +107,7 @@ my ($first_ts, $last_ts);
 
 my $dbh = DBI->connect($dsn, $db_user, $db_password,
                        {'RaiseError' => 1, AutoCommit => 0,
-                        mysql_server_prepare => 1});
+                        mariadb_server_prepare => 1});
 die($DBI::errstr) unless $dbh;
 
 my $workbook = Excel::Writer::XLSX->new($xlsx_out) or die($!);
@@ -148,19 +149,19 @@ my $sth = $dbh->prepare
     ('SELECT ' .
      ' block_time, EOSIO_ACTIONS.global_action_seq AS seq, actor_account AS actor, ' .
      ' action_name AS action, recipient_account AS recipient, ' .
-     ' issuer, currency, amount AS balance, ' .
+     ' contract, currency, amount AS balance, ' .
      ' cpu_weight AS cpu_stake, net_weight AS net_stake, ' .
      ' ram_quota, ram_usage, trx_id, jsdata ' .
      'FROM EOSIO_ACTIONS ' .
      'JOIN ' .
      'EOSIO_RESOURCE_BALANCES ON ' .
-     '  EOSIO_RESOURCE_BALANCES.action_id=EOSIO_ACTIONS.id ' .
+     '  EOSIO_RESOURCE_BALANCES.global_seq=EOSIO_ACTIONS.global_action_seq ' .
      'JOIN ' .
      'EOSIO_CURRENCY_BALANCES ON ' .
-     '  EOSIO_CURRENCY_BALANCES.action_id=EOSIO_ACTIONS.id AND ' .
+     '  EOSIO_CURRENCY_BALANCES.global_seq=EOSIO_ACTIONS.global_action_seq AND ' .
      '  EOSIO_CURRENCY_BALANCES.account_name=EOSIO_RESOURCE_BALANCES.account_name ' .
      'WHERE EOSIO_CURRENCY_BALANCES.account_name=? AND ' .
-     '  block_time BETWEEN ? AND DATE_ADD(?, INTERVAL ? MONTH) ' .
+     '  block_time BETWEEN ? AND DATE_ADD(?, INTERVAL ? MONTH) AND irreversible=1 ' .
      'ORDER BY EOSIO_ACTIONS.global_action_seq');
 
 
@@ -168,7 +169,7 @@ $sth->execute($account, $start_date, $start_date, $months);
 
 while( my $r = $sth->fetchrow_hashref('NAME_lc') )
 {
-    $final_balance{$r->{'issuer'}}{$r->{'currency'}} = $r->{'balance'};
+    $final_balance{$r->{'contract'}}{$r->{'currency'}} = $r->{'balance'};
     $final_stake{'cpu'} = $r->{'cpu_stake'};
     $final_stake{'net'} = $r->{'net_stake'};
     $final_ram{'quota'} = $r->{'ram_quota'};
@@ -180,8 +181,15 @@ while( my $r = $sth->fetchrow_hashref('NAME_lc') )
     }
 
     $last_ts = $r->{'block_time'};
+
+    my $jsdata = $r->{'jsdata'};
+    if( unpack('A', $jsdata) eq 'z' ) # LZ4 compressed data
+    {
+        my @x = unpack('Aa*', $jsdata);
+        $jsdata = Compress::LZ4::decompress($x[1]);
+    }
     
-    my $action = $json->decode( decode('UTF-8', $r->{'jsdata'}, Encode::FB_CROAK) );
+    my $action = $json->decode( decode('UTF-8', $jsdata, Encode::FB_CROAK) );
     my $atrace = $action->{'action_trace'};
 
     foreach my $colname (@transfer_columns)
@@ -326,7 +334,7 @@ $row+=2;
 $worksheet->write($row, $col, 'EOS assets:', $f_bold);
 $col = 0;
 $row++;
-$worksheet->write($row, $col, 'issuer', $f_tblheader);
+$worksheet->write($row, $col, 'contract', $f_tblheader);
 $col++;
 $worksheet->write($row, $col, 'category', $f_tblheader);
 $col++;
@@ -385,7 +393,7 @@ $row+=2;
 $worksheet->write($row, $col, 'RAM:', $f_bold);
 $col = 0;
 $row++;
-$worksheet->write($row, $col, 'issuer', $f_tblheader);
+$worksheet->write($row, $col, 'contract', $f_tblheader);
 $col++;
 $worksheet->write($row, $col, 'category', $f_tblheader);
 $col++;
@@ -422,7 +430,7 @@ $row+=2;
 $worksheet->write($row, $col, 'Tokens:', $f_bold);
 $col = 0;
 $row++;
-$worksheet->write($row, $col, 'issuer', $f_tblheader);
+$worksheet->write($row, $col, 'contract', $f_tblheader);
 $col++;
 $worksheet->write($row, $col, 'category', $f_tblheader);
 $col++;
@@ -432,20 +440,20 @@ $worksheet->write($row, $col, 'amount', $f_tblheader);
 $col++;
 
 
-foreach my $issuer (sort keys %final_balance)
+foreach my $contract (sort keys %final_balance)
 {
-    next if $issuer eq 'eosio.token';
-    foreach my $currency (sort keys %{$final_balance{$issuer}})
+    next if $contract eq 'eosio.token';
+    foreach my $currency (sort keys %{$final_balance{$contract}})
     {
         $col = 0;
         $row++;
         
-        $worksheet->write_string($row, $col, $issuer);
+        $worksheet->write_string($row, $col, $contract);
         $col++;
         $col++;
         $worksheet->write_string($row, $col, $currency);
         $col++;
-        $worksheet->write_number($row, $col, $final_balance{$issuer}{$currency},  $f_money);
+        $worksheet->write_number($row, $col, $final_balance{$contract}{$currency},  $f_money);
     }
 }
 

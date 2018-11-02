@@ -5,6 +5,7 @@ use ZMQ::Raw;
 use JSON;
 use Getopt::Long;
 use DBI;
+use Compress::LZ4;
 
 $| = 1;
 
@@ -171,15 +172,16 @@ while(1)
 
         my $action_name = $action->{'action_trace'}{'act'}{'name'};
 
-        $sth_insaction->execute($seq,
-                                $block_num,
-                                $block_time,
-                                $actor,
-                                $action->{'action_trace'}{'receipt'}{'receiver'},
-                                $action_name,
-                                $tx,
-                                $js);
-
+        $sth_insaction->bind_param(1, $seq);
+        $sth_insaction->bind_param(2, $block_num);
+        $sth_insaction->bind_param(3, $block_time);
+        $sth_insaction->bind_param(4, $actor);
+        $sth_insaction->bind_param(5, $action->{'action_trace'}{'receipt'}{'receiver'});
+        $sth_insaction->bind_param(6, $action_name);
+        $sth_insaction->bind_param(7, $tx);
+        $sth_insaction->bind_param(8, pack('Aa*', 'z', compress($js)), DBI::SQL_BLOB);
+        $sth_insaction->execute();
+    
         foreach my $brow (@{$action->{'resource_balances'}})
         {
             my $account = $brow->{'account_name'};
@@ -253,7 +255,6 @@ while(1)
         }
 
         my $atrace = $action->{'action_trace'};
-        my $data = $atrace->{'act'}{'data'};
         my $state = {'transfers' => []};
         retrieve_transfers($atrace, $state);
 

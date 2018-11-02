@@ -26,7 +26,7 @@ performance.
 ```
 sudo apt-get install cpanminus gcc g++ libzmq5-dev mariadb-server \
 libmysqlclient-dev libdbi-perl libexcel-writer-xlsx-perl \
-libjson-xs-perl libjson-perl libencode-perl
+libjson-xs-perl libjson-perl libencode-perl libcompress-lz4-perl
 
 sudo cpanm DBD::MariaDB
 sudo cpanm ZMQ::Raw

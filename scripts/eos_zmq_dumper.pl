@@ -97,6 +97,11 @@ while(1)
         {
             $out .= 'fork ' . $data->{'invalid_block_num'};
         }
+        elsif( $msgtype == 4 )  # failed
+        {
+            $out .= 'failed ' . $data->{'block_num'} . ' ' .
+                substr($data->{'trx_id'}, 0, 8) . ' ' . $data->{'status_name'};
+        }
 
         print $out, "\n";
     }

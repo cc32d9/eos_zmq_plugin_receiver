@@ -94,14 +94,14 @@ my $sth_inslastres = $dbh->prepare
 
 my $sth_inscurr = $dbh->prepare
     ('INSERT IGNORE INTO EOSIO_CURRENCY_BALANCES ' .
-     '(global_seq, account_name, contract, currency, amount) ' .
-     'VALUES(?,?,?,?,?)');
+     '(global_seq, account_name, contract, currency, amount, deleted) ' .
+     'VALUES(?,?,?,?,?,?)');
 
 my $sth_inslastcurr = $dbh->prepare
     ('INSERT INTO EOSIO_LATEST_CURRENCY ' .
-     '(account_name, global_seq, contract, currency, amount) ' .
-     'VALUES(?,?,?,?,?) ' .
-     'ON DUPLICATE KEY UPDATE global_seq=?, amount=?');
+     '(account_name, global_seq, contract, currency, amount, deleted) ' .
+     'VALUES(?,?,?,?,?,?) ' .
+     'ON DUPLICATE KEY UPDATE global_seq=?, amount=?, deleted=?');
 
 my $sth_upd_last_irreversible = $dbh->prepare
     ('UPDATE EOSIO_VARS SET val_int=? where varname=\'last_irreversible_block\'');
@@ -235,22 +235,26 @@ while(1)
             my $account = $brow->{'account_name'};
             my $contract = $brow->{'contract'};
             my ($amount, $currency) = split(/\s+/, $brow->{'balance'});
-
+            my $deleted = $brow->{'deleted'}?1:0;
+            
             $bal{$account}{$contract}{$currency} = $amount;
 
             $sth_inscurr->execute($seq,
                                   $account,
                                   $contract,
                                   $currency,
-                                  $amount);
+                                  $amount,
+                                  $deleted);
 
             $sth_inslastcurr->execute($account,
                                       $seq,
                                       $contract,
                                       $currency,
                                       $amount,
+                                      $deleted,
                                       $seq,
-                                      $amount);
+                                      $amount,
+                                      $deleted);
             $uncommitted+=2;
         }
 

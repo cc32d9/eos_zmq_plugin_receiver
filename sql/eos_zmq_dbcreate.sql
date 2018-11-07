@@ -81,6 +81,7 @@ CREATE TABLE EOSIO_CURRENCY_BALANCES
  contract      VARCHAR(13) NOT NULL,
  currency      VARCHAR(8) NOT NULL,
  amount        DOUBLE PRECISION NOT NULL,
+ deleted       TINYINT NOT NULL,
  FOREIGN KEY (global_seq)
    REFERENCES EOSIO_ACTIONS(global_action_seq)
    ON DELETE CASCADE
@@ -119,7 +120,8 @@ CREATE TABLE EOSIO_LATEST_CURRENCY
  global_seq        BIGINT UNSIGNED NOT NULL,
  contract          VARCHAR(13) NOT NULL,
  currency          VARCHAR(8) NOT NULL,
- amount            DOUBLE PRECISION NOT NULL
+ amount            DOUBLE PRECISION NOT NULL,
+ deleted           TINYINT NOT NULL
 ) ENGINE=InnoDB;
 
 CREATE UNIQUE INDEX EOSIO_LATEST_CURRENCY_I01 ON EOSIO_LATEST_CURRENCY (account_name, contract, currency);

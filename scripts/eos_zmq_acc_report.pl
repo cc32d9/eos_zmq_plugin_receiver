@@ -189,7 +189,7 @@ while( my $r = $sth->fetchrow_hashref('NAME_lc') )
         $jsdata = Compress::LZ4::decompress($x[1]);
     }
     
-    my $action = $json->decode( decode('UTF-8', $jsdata, Encode::FB_CROAK) );
+    my $action = $json->decode( $jsdata );
     my $atrace = $action->{'action_trace'};
 
     foreach my $colname (@transfer_columns)
@@ -293,8 +293,16 @@ while( my $r = $sth->fetchrow_hashref('NAME_lc') )
     }
 }
 
+$sth->finish();
 $dbh->disconnect();
 
+if( not defined($first_ts) )
+{
+    print "No data found for $xlsx_out\n";
+    $workbook->close();
+    unlink $xlsx_out;
+    exit(0);
+}
 
 $first_ts =~ s/\s/T/;
 $last_ts =~ s/\s/T/;

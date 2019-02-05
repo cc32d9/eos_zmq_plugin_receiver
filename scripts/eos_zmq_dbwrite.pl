@@ -18,13 +18,15 @@ my $commit_every = 1000;
 my %blacklist = ('blocktwitter' => 1);
 my @blacklist_acc;
 
+my $skip_compress;
 
 my $ok = GetOptions
     ('connect=s' => \$connectstr,
      'dsn=s'     => \$dsn,
      'dbuser=s'  => \$db_user,
      'dbpw=s'    => \$db_password,
-     'bl=s'      => \@blacklist_acc);
+     'bl=s'      => \@blacklist_acc,
+     'plain'     => \$skip_compress);
 
 
 if( not $ok or scalar(@ARGV) > 0 )
@@ -37,7 +39,8 @@ if( not $ok or scalar(@ARGV) > 0 )
     "  --dsn=DSN          \[$dsn\]\n",
     "  --dbuser=USER      \[$db_user\]\n",
     "  --dbpw=PASSWORD    \[$db_password\]\n",
-    "  --bl=ACCOUNT       blacklist oone or more accounts\n";
+    "  --bl=ACCOUNT       blacklist oone or more accounts\n",
+    "  --plain            store uncompressd JSON traces\n";
     exit 1;
 }
 
@@ -179,7 +182,14 @@ while(1)
         $sth_insaction->bind_param(5, $action->{'action_trace'}{'receipt'}{'receiver'});
         $sth_insaction->bind_param(6, $action_name);
         $sth_insaction->bind_param(7, $tx);
-        $sth_insaction->bind_param(8, pack('Aa*', 'z', compress($js)), DBI::SQL_BLOB);
+        if( $skip_compress )
+        {
+            $sth_insaction->bind_param(8, $js, DBI::SQL_BLOB);
+        }
+        else
+        {
+            $sth_insaction->bind_param(8, pack('Aa*', 'z', compress($js)), DBI::SQL_BLOB);
+        }
         $sth_insaction->execute();
     
         foreach my $brow (@{$action->{'resource_balances'}})
